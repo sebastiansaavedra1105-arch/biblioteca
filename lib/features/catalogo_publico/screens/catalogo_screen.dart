@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/database/database_service.dart';
 import '../../auth/screens/login_screen.dart';
 
 class CatalogoScreen extends StatefulWidget {
@@ -9,136 +10,142 @@ class CatalogoScreen extends StatefulWidget {
 }
 
 class _CatalogoScreenState extends State<CatalogoScreen> {
-  // Simulación de datos (luego vendrán de la BD)
-  final List<Map<String, dynamic>> libros = [
-    {'titulo': 'Clean Code', 'autor': 'Robert C. Martin', 'disponible': true},
-    {'titulo': 'El Principito', 'autor': 'Antoine de Saint-Exupéry', 'disponible': false},
-    {'titulo': '1984', 'autor': 'George Orwell', 'disponible': true},
-    {'titulo': 'Flutter Apprentice', 'autor': 'Ray Wenderlich', 'disponible': true},
-    {'titulo': 'Cien Años de Soledad', 'autor': 'Gabriel García Márquez', 'disponible': true},
-  ];
+  // Lista vacía al inicio, se llenará con la DB
+  List<Map<String, dynamic>> _libros = [];
+  List<Map<String, dynamic>> _librosFiltrados = [];
+  bool _isLoading = true;
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _cargarLibros();
+  }
+
+  Future<void> _cargarLibros() async {
+    final datos = await DatabaseService().obtenerTodosLosLibros();
+    if (mounted) {
+      setState(() {
+        _libros = datos;
+        _librosFiltrados = datos; // Al inicio mostramos todos
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _filtrarLibros(String query) {
+    final results = _libros.where((libro) {
+      final titulo = libro['titulo'].toString().toLowerCase();
+      final autor = libro['autor'].toString().toLowerCase();
+      final input = query.toLowerCase();
+      return titulo.contains(input) || autor.contains(input);
+    }).toList();
+
+    setState(() => _librosFiltrados = results);
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Obtenemos los colores del tema definido en main.dart
     final colorDorado = Theme.of(context).colorScheme.primary;
-    final colorFondoTarjeta = Theme.of(context).cardTheme.color;
 
     return Scaffold(
-      // Appbar transparente para dar sensación de amplitud
+      backgroundColor: Colors.black, // Aseguramos fondo negro
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.local_library, color: colorDorado, size: 30),
+            Icon(Icons.local_library, color: colorDorado, size: 28),
             const SizedBox(width: 10),
-            const Text('BIBLIOTECA DIGITAL'), // Fuente definida en theme
+            const Text('BIBLIOTECA DIGITAL'),
           ],
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.login),
-            tooltip: 'Acceso Administrativo',
+            tooltip: 'Acceso Admin',
             onPressed: () {
-              Navigator.push
-              (context,
-              MaterialPageRoute(builder: (context) => const LoginScreen()),
-             );
+               Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+              );
             },
           )
         ],
       ),
       body: Column(
         children: [
-          // SECCIÓN 1: BUSCADOR HERO
+          // SECCIÓN BUSCADOR
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+            padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
             decoration: BoxDecoration(
               gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black, 
-                  Colors.black.withOpacity(0.8)
-                ],
+                colors: [Colors.black, Colors.black.withOpacity(0.8)],
+                begin: Alignment.topCenter, end: Alignment.bottomCenter
               ),
             ),
-            child: Column(
-              children: [
-                const Text(
-                  "Encuentra tu próxima lectura",
-                  style: TextStyle(
-                    color: Colors.grey, 
-                    fontSize: 16, 
-                    letterSpacing: 2
-                  ),
+            child: TextField(
+              controller: _searchController,
+              onChanged: _filtrarLibros,
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: 'Buscar título, autor...',
+                hintStyle: TextStyle(color: Colors.grey[600]),
+                filled: true,
+                fillColor: const Color(0xFF1A1A1A),
+                prefixIcon: Icon(Icons.search, color: colorDorado),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide(color: colorDorado),
                 ),
-                const SizedBox(height: 20),
-                TextField(
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Buscar por título, autor o ISBN...',
-                    hintStyle: TextStyle(color: Colors.grey[600]),
-                    filled: true,
-                    fillColor: const Color(0xFF1A1A1A), // Gris oscuro premium
-                    prefixIcon: Icon(Icons.search, color: colorDorado),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30),
-                      borderSide: BorderSide(color: colorDorado),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30),
-                      borderSide: BorderSide(color: Colors.grey[800]!),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(30),
-                      borderSide: BorderSide(color: colorDorado, width: 2),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
 
-          // SECCIÓN 2: RESULTADOS (GRID)
+          // SECCIÓN GRID DE LIBROS REALES
           Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: GridView.builder(
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3, // 3 Columnas (ajustable según pantalla)
-                  childAspectRatio: 0.7, // Proporción de libro vertical
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
+            child: _isLoading 
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _cargarLibros,
+                  color: colorDorado,
+                  child: _librosFiltrados.isEmpty 
+                    ? const Center(child: Text("No se encontraron libros", style: TextStyle(color: Colors.grey)))
+                    : GridView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3, 
+                          childAspectRatio: 0.7,
+                          crossAxisSpacing: 16,
+                          mainAxisSpacing: 16,
+                        ),
+                        itemCount: _librosFiltrados.length,
+                        itemBuilder: (context, index) {
+                          return _buildBookCard(_librosFiltrados[index], colorDorado);
+                        },
+                      ),
                 ),
-                itemCount: libros.length,
-                itemBuilder: (context, index) {
-                  final libro = libros[index];
-                  return _buildBookCard(libro, colorDorado, colorFondoTarjeta!);
-                },
-              ),
-            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildBookCard(Map<String, dynamic> libro, Color colorAccent, Color cardColor) {
+  Widget _buildBookCard(Map<String, dynamic> libro, Color colorAccent) {
+    // Calculamos disponibilidad real desde la DB
+    final int disponibles = libro['copias_disponibles'];
+    final bool isDisponible = disponibles > 0;
+
     return Container(
       decoration: BoxDecoration(
-        color: cardColor,
+        color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[900]!), // Borde sutil
-        boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, offset: const Offset(0, 5))
-        ],
+        border: Border.all(color: Colors.grey[900]!),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Simulación de Portada
           Expanded(
             flex: 3,
             child: Container(
@@ -147,15 +154,15 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
               ),
               child: Center(
-                child: Icon(Icons.book, size: 50, color: Colors.grey[800]),
+                // Si tienes URL de imagen úsala, si no, ícono genérico
+                child: Icon(Icons.book, size: 40, color: Colors.grey[800]),
               ),
             ),
           ),
-          // Información
           Expanded(
             flex: 2,
             child: Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.all(10.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -168,34 +175,31 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: colorAccent, // Título Dorado
+                          color: colorAccent,
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: 14,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         libro['autor'],
-                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: Colors.grey, fontSize: 11),
                       ),
                     ],
                   ),
-                  // Indicador de Disponibilidad
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                     decoration: BoxDecoration(
-                      color: libro['disponible'] ? Colors.green[900]!.withOpacity(0.3) : Colors.red[900]!.withOpacity(0.3),
+                      color: isDisponible ? Colors.green[900]!.withOpacity(0.3) : Colors.red[900]!.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(
-                        color: libro['disponible'] ? Colors.green : Colors.red,
-                        width: 0.5
-                      )
                     ),
                     child: Text(
-                      libro['disponible'] ? 'DISPONIBLE' : 'PRESTADO',
+                      isDisponible ? '$disponibles DISPONIBLES' : 'AGOTADO',
                       style: TextStyle(
-                        color: libro['disponible'] ? Colors.green[400] : Colors.red[400],
-                        fontSize: 10,
+                        color: isDisponible ? Colors.green[400] : Colors.red[400],
+                        fontSize: 9,
                         fontWeight: FontWeight.bold
                       ),
                     ),

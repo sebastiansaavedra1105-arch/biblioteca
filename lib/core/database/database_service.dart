@@ -1,10 +1,11 @@
 import 'dart:io';
+import 'package:flutter/material.dart'; // Para debugPrint
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 class DatabaseService {
-  // Singleton: Para asegurar que solo haya una conexión abierta
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
   DatabaseService._internal();
@@ -18,12 +19,13 @@ class DatabaseService {
   }
 
   Future<Database> _initDatabase() async {
-    // Configuración específica para Windows/Linux
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
 
     final Directory appDocumentsDir = await getApplicationDocumentsDirectory();
-    String path = join(appDocumentsDir.path, 'biblioteca_premium.db');
+    
+    // CAMBIO A V4: Para iniciar con una base de datos totalmente limpia (0 libros)
+    String path = join(appDocumentsDir.path, 'biblioteca_premium_v4.db');
     
     return await openDatabase(
       path,
@@ -33,7 +35,7 @@ class DatabaseService {
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    // 1. Tabla Usuarios
+    // 1. Usuarios
     await db.execute('''
       CREATE TABLE usuarios(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +46,7 @@ class DatabaseService {
       )
     ''');
 
-    // 2. Tabla Libros
+    // 2. Libros (Estructura completa con estado y observación)
     await db.execute('''
       CREATE TABLE libros(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -56,107 +58,113 @@ class DatabaseService {
         editorial TEXT,
         categoria TEXT,
         copias INTEGER,
-        copias_disponibles INTEGER
+        copias_disponibles INTEGER,
+        estado TEXT,
+        observacion TEXT
       )
     ''');
 
-    // 3. Crear Usuario Admin por defecto (Usuario: admin, Pass: 1234)
+    // 3. Préstamos
+    await db.execute('''
+      CREATE TABLE prestamos(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        libro_id INTEGER,
+        libro_titulo TEXT,
+        codigo_alumno TEXT,
+        nombre_alumno TEXT,
+        fecha_prestamo TEXT,
+        fecha_entrega TEXT,
+        activo INTEGER,
+        FOREIGN KEY(libro_id) REFERENCES libros(id)
+      )
+    ''');
+
+    // Solo creamos el Admin por defecto. ¡No creamos libros!
     await db.insert('usuarios', {
       'username': 'admin',
-      'password': '1234', // En producción esto debería estar encriptado (SHA256)
+      'password': '1234',
       'nombre': 'Administrador Principal',
       'rol': 'admin'
     });
-    
-    // ignore: avoid_print
-    print("Base de datos creada y Admin insertado.");
   }
 
-  // --- MÉTODOS DE AUTENTICACIÓN ---
+  // --- MÉTODOS DE NEGOCIO ---
 
-  Future<Map<String, dynamic>?> login(String user, String password) async {
+  Future<int> insertarLibro(Map<String, dynamic> row) async {
     final db = await database;
-    final List<Map<String, dynamic>> result = await db.query(
-      'usuarios',
-      where: 'username = ? AND password = ?',
-      whereArgs: [user, password],
-    );
+    return await db.insert('libros', row);
+  }
 
-    if (result.isNotEmpty) {
-      return result.first;
-    } else {
-      return null;
+  Future<List<Map<String, dynamic>>> obtenerTodosLosLibros() async {
+    final db = await database;
+    return await db.query('libros', orderBy: 'titulo ASC');
+  }
+
+  Future<Map<String, dynamic>?> buscarLibroPorCodigo(String codigo) async {
+    final db = await database;
+    final res = await db.query('libros', where: 'codigo_barras = ?', whereArgs: [codigo]);
+    return res.isNotEmpty ? res.first : null;
+  }
+
+  Future<Map<String, int>> obtenerEstadisticas() async {
+    final db = await database;
+    // Usamos 'as int? ?? 0' para evitar errores con nulos
+    final resultLibros = await db.rawQuery('SELECT COUNT(*) as count FROM libros');
+    final totalLibros = Sqflite.firstIntValue(resultLibros) ?? 0;
+
+    final resultPrestamos = await db.rawQuery('SELECT COUNT(*) as count FROM prestamos WHERE activo = 1');
+    final prestamosActivos = Sqflite.firstIntValue(resultPrestamos) ?? 0;
+
+    final resultDisponibles = await db.rawQuery('SELECT SUM(copias_disponibles) as sum FROM libros');
+    final librosDisponibles = Sqflite.firstIntValue(resultDisponibles) ?? 0;
+
+    return {
+      'totalLibros': totalLibros,
+      'prestamosActivos': prestamosActivos,
+      'librosDisponibles': librosDisponibles,
+    };
+  }
+  
+  Future<bool> registrarPrestamo({
+    required int libroId,
+    required String titulo,
+    required String alumno,
+    required String nombreAlumno,
+    required DateTime entrega,
+  }) async {
+    final db = await database;
+    try {
+      await db.transaction((txn) async {
+        await txn.insert('prestamos', {
+          'libro_id': libroId,
+          'libro_titulo': titulo,
+          'codigo_alumno': alumno,
+          'nombre_alumno': nombreAlumno,
+          'fecha_prestamo': DateTime.now().toIso8601String(),
+          'fecha_entrega': entrega.toIso8601String(),
+          'activo': 1
+        });
+        await txn.rawUpdate(
+          'UPDATE libros SET copias_disponibles = copias_disponibles - 1 WHERE id = ?',
+          [libroId]
+        );
+      });
+      return true;
+    } catch (e) {
+      debugPrint("Error: $e");
+      return false;
     }
   }
 
-  // --- MÉTODOS PARA EL DASHBOARD ---
-
-  // 1. Obtener conteos para las tarjetas
-  Future<Map<String, int>> obtenerEstadisticas() async {
+  Future<Map<String, dynamic>?> login(String user, String password) async {
     final db = await database;
-    
-    // Contar libros totales
-    final resultLibros = await db.rawQuery('SELECT COUNT(*) as count FROM libros');
-    final int totalLibros = (resultLibros.first['count'] as int?) ?? 0;
-    
-    return {
-      'totalLibros': totalLibros,
-      'prestamosActivos': 0, // Lo actualizaremos cuando hagamos la tabla prestamos
-      'librosDisponibles': totalLibros, // Por ahora igual al total
-    };
+    final res = await db.query('usuarios', where: 'username = ? AND password = ?', whereArgs: [user, password]);
+    return res.isNotEmpty ? res.first : null;
   }
-
-  // 2. Insertar datos de prueba (Semilla)
+  
+  // Función vacía: Ya no inserta nada de prueba.
   Future<void> insertarDatosPrueba() async {
-    final db = await database;
-    
-    // Verificar si ya hay libros para no duplicar
-    final countResult = await db.rawQuery('SELECT COUNT(*) as count FROM libros');
-    final count = (countResult.first['count'] as int?) ?? 0;
-    if (count > 0) return;
-
-    // Insertar libros de ejemplo (Los de tu HTML)
-    final batch = db.batch();
-    
-    batch.insert('libros', {
-      'codigo_barras': 'LIB001',
-      'titulo': 'Cien Años de Soledad',
-      'autor': 'Gabriel G. Marquez',
-      'isbn': '978-0307474728',
-      'anio': 1967,
-      'editorial': 'Sudamericana',
-      'categoria': 'Novela',
-      'copias': 3,
-      'copias_disponibles': 3
-    });
-    
-    batch.insert('libros', {
-      'codigo_barras': 'LIB002',
-      'titulo': 'Clean Code',
-      'autor': 'Robert C. Martin',
-      'isbn': '978-0132350884',
-      'anio': 2008,
-      'editorial': 'Prentice Hall',
-      'categoria': 'Tecnología',
-      'copias': 5,
-      'copias_disponibles': 5
-    });
-
-    batch.insert('libros', {
-      'codigo_barras': 'LIB003',
-      'titulo': 'El Principito',
-      'autor': 'Saint-Exupéry',
-      'isbn': '978-0156012195',
-      'anio': 1943,
-      'editorial': 'Reynal & Hitchcock',
-      'categoria': 'Infantil',
-      'copias': 2,
-      'copias_disponibles': 2
-    });
-
-    await batch.commit();
-    // ignore: avoid_print
-    print("Datos de prueba insertados exitosamente.");
+    // Intencionalmente vacío para que el sistema inicie limpio.
+    debugPrint("Generación de datos de prueba desactivada.");
   }
-
 }

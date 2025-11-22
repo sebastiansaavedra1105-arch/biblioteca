@@ -3,6 +3,7 @@ import '../../../core/database/database_service.dart';
 import '../../prestamos/screens/nuevo_prestamo_screen.dart';
 import '../../prestamos/screens/registrar_devolucion_screen.dart';
 import '../../catalogo_publico/screens/catalogo_screen.dart';
+import 'agregar_libro_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -15,7 +16,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   bool _isLoading = true;
 
-  // Variables de estado real
+  // Variables de estado
   int totalLibros = 0;
   int prestamosActivos = 0;
   int librosDisponibles = 0;
@@ -26,7 +27,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _cargarDatos();
   }
 
-  // Función para pedir datos a la DB
   Future<void> _cargarDatos() async {
     final db = DatabaseService();
     final stats = await db.obtenerEstadisticas();
@@ -41,19 +41,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  // Función para inyectar datos de prueba si está vacío
-  Future<void> _generarDatosPrueba() async {
-    setState(() => _isLoading = true);
-    await DatabaseService().insertarDatosPrueba();
-    await _cargarDatos(); // Recargar números
-    
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Datos de ejemplo generados correctamente')),
-      );
-    }
-  }
-
   void _cerrarSesion() {
     Navigator.pushAndRemoveUntil(
       context,
@@ -62,7 +49,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  void _onItemTapped(int index) {
+  // Lógica principal de navegación
+  void _onItemTapped(int index) async {
+    // CASO 1: Si toca "Prestar" (Índice 1)
+    if (index == 1) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const NuevoPrestamoScreen()),
+      );
+      _cargarDatos(); // Recargar al volver
+      return; // No cambiamos de pestaña, nos quedamos donde estábamos
+    }
+
+    // CASO 2: Si toca "Nuevo Libro" (Índice 3)
+    if (index == 3) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => const AgregarLibroScreen()),
+      );
+      _cargarDatos(); // Recargar al volver
+      return; // No cambiamos de pestaña
+    }
+
+    // CASO 3: Navegación normal (Resumen, Devoluciones, Catálogo)
     setState(() {
       _selectedIndex = index;
     });
@@ -72,34 +81,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final colorDorado = Theme.of(context).colorScheme.primary;
 
-    // Vistas
+    // Definimos las vistas. 
+    // NOTA: Dejamos SizedBox en los índices 1 y 3 porque esos botones abren pantallas encima, 
+    // no cambian el cuerpo del Dashboard.
     final List<Widget> widgetOptions = <Widget>[
-      _buildEstadisticasTab(colorDorado),
-      const RegistrarDevolucionScreen(),
-      const Center(child: Text('Catálogo Admin (Próximamente)')), 
+      _buildEstadisticasTab(colorDorado),  // Índice 0
+      const SizedBox(),                    // Índice 1 (Botón Acción: Prestar)
+      const RegistrarDevolucionScreen(),   // Índice 2
+      const SizedBox(),                    // Índice 3 (Botón Acción: Nuevo Libro)
+      const Center(child: Text('Catálogo Admin (Próximamente)')), // Índice 4
     ];
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('PANEL ADMINISTRATIVO'),
         actions: [
-          // Botón para recargar datos
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _cargarDatos,
             tooltip: 'Actualizar datos',
           ),
-          // Menú de opciones
           PopupMenuButton<String>(
             onSelected: (value) {
-              if (value == 'seed') _generarDatosPrueba();
               if (value == 'logout') _cerrarSesion();
             },
             itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'seed',
-                child: Row(children: [Icon(Icons.cloud_download), SizedBox(width: 10), Text('Cargar Datos Ejemplo')]),
-              ),
               const PopupMenuItem<String>(
                 value: 'logout',
                 child: Row(children: [Icon(Icons.exit_to_app, color: Colors.red), SizedBox(width: 10), Text('Cerrar Sesión')]),
@@ -108,41 +114,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
+      
+      // Cuerpo de la app
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator()) 
         : widgetOptions.elementAt(_selectedIndex),
-      
-      floatingActionButton: _selectedIndex == 0 
-          ? FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const NuevoPrestamoScreen()),
-                );
-              },
-              label: const Text('Nuevo Préstamo'),
-              icon: const Icon(Icons.add),
-              backgroundColor: colorDorado,
-              foregroundColor: Colors.black,
-            )
-          : null,
+
+      // --- BARRA DE NAVEGACIÓN CON 5 ITEMS ---
       bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Resumen'),
-          BottomNavigationBarItem(icon: Icon(Icons.assignment_return), label: 'Devoluciones'),
-          BottomNavigationBarItem(icon: Icon(Icons.library_books), label: 'Inventario'),
-        ],
-        currentIndex: _selectedIndex,
+        // 'fixed' es obligatorio cuando hay más de 3 items para que se vean los textos y colores bien
+        type: BottomNavigationBarType.fixed, 
+        backgroundColor: Colors.black,
         selectedItemColor: colorDorado,
         unselectedItemColor: Colors.grey,
-        backgroundColor: Colors.black,
+        currentIndex: _selectedIndex,
         onTap: _onItemTapped,
+        items: const <BottomNavigationBarItem>[
+          // 0. Resumen
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard), 
+            label: 'Resumen'
+          ),
+          // 1. Prestar (Acción)
+          BottomNavigationBarItem(
+            icon: Icon(Icons.add_circle_outline, size: 30), 
+            label: 'Prestar'
+          ),
+          // 2. Devoluciones
+          BottomNavigationBarItem(
+            icon: Icon(Icons.assignment_return), 
+            label: 'Devolver'
+          ),
+          // 3. Nuevo Libro (Acción)
+          BottomNavigationBarItem(
+            icon: Icon(Icons.book, size: 30), 
+            label: 'Agregar Libro'
+          ),
+          // 4. Inventario
+          BottomNavigationBarItem(
+            icon: Icon(Icons.list), 
+            label: 'Inventario'
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildEstadisticasTab(Color colorDorado) {
-    // Si no hay libros, mostrar mensaje de bienvenida
     if (totalLibros == 0) {
       return Center(
         child: Column(
@@ -151,13 +169,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
             Icon(Icons.library_books_outlined, size: 80, color: Colors.grey[800]),
             const SizedBox(height: 20),
             const Text("La base de datos está vacía", style: TextStyle(fontSize: 18, color: Colors.grey)),
-            const SizedBox(height: 10),
-            ElevatedButton.icon(
-              onPressed: _generarDatosPrueba,
-              icon: const Icon(Icons.auto_fix_high, color: Colors.black),
-              label: const Text("Generar Datos de Prueba", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(backgroundColor: colorDorado),
-            )
+            const SizedBox(height: 30),
+            const Text("Usa el botón 'Agregar Libro' abajo 👇", style: TextStyle(color: Colors.grey)),
           ],
         ),
       );
@@ -170,11 +183,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           Text("Bienvenido, Admin", style: TextStyle(color: Colors.grey[400], fontSize: 16)),
           const SizedBox(height: 20),
+          
           Expanded(
             child: GridView.count(
-              crossAxisCount: 2,
-              crossAxisSpacing: 16,
-              mainAxisSpacing: 16,
+              crossAxisCount: 4,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
               childAspectRatio: 1.1,
               children: [
                 _buildStatCard('Total Libros', totalLibros.toString(), Colors.blue, Icons.menu_book),
@@ -195,10 +209,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(16),
           gradient: LinearGradient(
-            colors: [
-              color.withOpacity(0.2), 
-              Colors.transparent
-            ],
+            colors: [color.withOpacity(0.2), Colors.transparent],
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
           ),
