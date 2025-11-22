@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
-// Importar el servicio de BD
-import 'package:biblio/core/database/database_service.dart'; 
-
-import 'package:biblio/features/prestamos/screens/nuevo_prestamo_screen.dart';
-import 'package:biblio/features/prestamos/screens/registrar_devolucion_screen.dart';
+import '../../../core/database/database_service.dart';
+import '../../prestamos/screens/nuevo_prestamo_screen.dart';
+import '../../prestamos/screens/registrar_devolucion_screen.dart';
+import '../../catalogo_publico/screens/catalogo_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -13,224 +12,208 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  // Estado para manejar la carga
+  int _selectedIndex = 0;
   bool _isLoading = true;
-  int _totalLibros = 0;
-  int _totalLectores = 0;
-  int _totalPrestamosActivos = 0;
+
+  // Variables de estado real
+  int totalLibros = 0;
+  int prestamosActivos = 0;
+  int librosDisponibles = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadDashboardData();
+    _cargarDatos();
   }
 
-  // Cargar datos asíncronamente
-  Future<void> _loadDashboardData() async {
-    setState(() { _isLoading = true; });
+  // Función para pedir datos a la DB
+  Future<void> _cargarDatos() async {
+    final db = DatabaseService();
+    final stats = await db.obtenerEstadisticas();
+    
+    if (mounted) {
+      setState(() {
+        totalLibros = stats['totalLibros'] ?? 0;
+        prestamosActivos = stats['prestamosActivos'] ?? 0;
+        librosDisponibles = stats['librosDisponibles'] ?? 0;
+        _isLoading = false;
+      });
+    }
+  }
 
-    // Instancia de la BD
-    final db = DatabaseService.instance;
+  // Función para inyectar datos de prueba si está vacío
+  Future<void> _generarDatosPrueba() async {
+    setState(() => _isLoading = true);
+    await DatabaseService().insertarDatosPrueba();
+    await _cargarDatos(); // Recargar números
+    
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Datos de ejemplo generados correctamente')),
+      );
+    }
+  }
 
-    // Obtener los conteos (ahora en paralelo)
-    final data = await Future.wait([
-      db.getTotalLibros(),
-      db.getTotalLectores(),
-      db.getTotalPrestamosActivos(),
-    ]);
+  void _cerrarSesion() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const CatalogoScreen()),
+      (route) => false,
+    );
+  }
 
-    // Actualizar el estado con los datos
+  void _onItemTapped(int index) {
     setState(() {
-      _totalLibros = data[0];
-      _totalLectores = data[1];
-      _totalPrestamosActivos = data[2];
-      _isLoading = false;
+      _selectedIndex = index;
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorDorado = Theme.of(context).colorScheme.primary;
+
+    // Vistas
+    final List<Widget> widgetOptions = <Widget>[
+      _buildEstadisticasTab(colorDorado),
+      const RegistrarDevolucionScreen(),
+      const Center(child: Text('Catálogo Admin (Próximamente)')), 
+    ];
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Biblioteca Dashboard'),
+        title: const Text('PANEL ADMINISTRATIVO'),
         actions: [
-          // Botón para refrescar los datos
+          // Botón para recargar datos
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadDashboardData,
-            tooltip: 'Refrescar datos',
+            onPressed: _cargarDatos,
+            tooltip: 'Actualizar datos',
+          ),
+          // Menú de opciones
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'seed') _generarDatosPrueba();
+              if (value == 'logout') _cerrarSesion();
+            },
+            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+              const PopupMenuItem<String>(
+                value: 'seed',
+                child: Row(children: [Icon(Icons.cloud_download), SizedBox(width: 10), Text('Cargar Datos Ejemplo')]),
+              ),
+              const PopupMenuItem<String>(
+                value: 'logout',
+                child: Row(children: [Icon(Icons.exit_to_app, color: Colors.red), SizedBox(width: 10), Text('Cerrar Sesión')]),
+              ),
+            ],
           ),
         ],
       ),
-      // Mostrar indicador de carga o el contenido
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _buildDashboardBody(context),
-    );
-  }
-
-  // Widget principal del contenido del Dashboard
-  Widget _buildDashboardBody(BuildContext context) {
-    // Usar ListView para permitir scroll en pantallas pequeñas
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        // --- Sección de Atajos Rápidos ---
-        _buildSectionTitle(context, 'Atajos Rápidos'),
-        const SizedBox(height: 16.0),
-        Row(
-          children: [
-            Expanded(
-              child: _buildShortcutButton(
-                context: context,
-                icon: Icons.add_task_outlined,
-                label: 'Nuevo Préstamo',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const NuevoPrestamoScreen(),
-                    ),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 16.0),
-            Expanded(
-              child: _buildShortcutButton(
-                context: context,
-                icon: Icons.undo_outlined,
-                label: 'Registrar Devolución',
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const RegistrarDevolucionScreen(),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-        
-        const SizedBox(height: 24.0),
-
-        // --- Sección de Estadísticas ---
-        _buildSectionTitle(context, 'Estadísticas'),
-        const SizedBox(height: 16.0),
-        // Grid para las tarjetas de KPI
-        GridView.count(
-          crossAxisCount: 2,
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          mainAxisSpacing: 16.0,
-          crossAxisSpacing: 16.0,
-          childAspectRatio: 1.2,
-          children: [
-            _buildKpiCard(
-              title: 'Libros Totales',
-              value: _totalLibros.toString(),
-              icon: Icons.book_outlined,
-              color: Colors.blue.shade700,
-            ),
-            _buildKpiCard(
-              title: 'Lectores',
-              value: _totalLectores.toString(),
-              icon: Icons.person_outline,
-              color: Colors.green.shade700,
-            ),
-            _buildKpiCard(
-              title: 'Préstamos Activos',
-              value: _totalPrestamosActivos.toString(),
-              icon: Icons.swap_horiz_outlined,
-              color: Colors.orange.shade700,
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  // --- Widgets Reutilizables ---
-
-  // Título de sección
-  Widget _buildSectionTitle(BuildContext context, String title) {
-    return Text(
-      title,
-      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.w600,
-        color: Colors.black87,
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator()) 
+        : widgetOptions.elementAt(_selectedIndex),
+      
+      floatingActionButton: _selectedIndex == 0 
+          ? FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const NuevoPrestamoScreen()),
+                );
+              },
+              label: const Text('Nuevo Préstamo'),
+              icon: const Icon(Icons.add),
+              backgroundColor: colorDorado,
+              foregroundColor: Colors.black,
+            )
+          : null,
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Resumen'),
+          BottomNavigationBarItem(icon: Icon(Icons.assignment_return), label: 'Devoluciones'),
+          BottomNavigationBarItem(icon: Icon(Icons.library_books), label: 'Inventario'),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: colorDorado,
+        unselectedItemColor: Colors.grey,
+        backgroundColor: Colors.black,
+        onTap: _onItemTapped,
       ),
     );
   }
 
-  // Tarjeta de KPI (Indicador Clave de Rendimiento)
-  Widget _buildKpiCard({
-    required String title,
-    required String value,
-    required IconData icon,
-    required Color color,
-  }) {
-    return Card(
-      elevation: 2.0,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
+  Widget _buildEstadisticasTab(Color colorDorado) {
+    // Si no hay libros, mostrar mensaje de bienvenida
+    if (totalLibros == 0) {
+      return Center(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 32.0, color: color),
-            const SizedBox(height: 8.0),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            Icon(Icons.library_books_outlined, size: 80, color: Colors.grey[800]),
+            const SizedBox(height: 20),
+            const Text("La base de datos está vacía", style: TextStyle(fontSize: 18, color: Colors.grey)),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: _generarDatosPrueba,
+              icon: const Icon(Icons.auto_fix_high, color: Colors.black),
+              label: const Text("Generar Datos de Prueba", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+              style: ElevatedButton.styleFrom(backgroundColor: colorDorado),
+            )
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text("Bienvenido, Admin", style: TextStyle(color: Colors.grey[400], fontSize: 16)),
+          const SizedBox(height: 20),
+          Expanded(
+            child: GridView.count(
+              crossAxisCount: 2,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
+              childAspectRatio: 1.1,
               children: [
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 4.0),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.black54,
-                  ),
-                  maxLines: 2,
-                ),
+                _buildStatCard('Total Libros', totalLibros.toString(), Colors.blue, Icons.menu_book),
+                _buildStatCard('Disponibles', librosDisponibles.toString(), Colors.green, Icons.check_circle_outline),
+                _buildStatCard('Prestados', prestamosActivos.toString(), Colors.orange, Icons.people_alt),
+                _buildStatCard('Vencidos', '0', Colors.red, Icons.warning_amber),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  // Botón de Atajo
-  Widget _buildShortcutButton({
-    required BuildContext context,
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    final colorPrimario = Theme.of(context).colorScheme.primary;
-    return ElevatedButton.icon(
-      icon: Icon(icon, size: 20.0),
-      label: Text(label),
-      onPressed: onPressed,
-      style: ElevatedButton.styleFrom(
-        foregroundColor: colorPrimario,
-        backgroundColor: colorPrimario.withOpacity(0.1),
-        elevation: 0,
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12.0),
+  Widget _buildStatCard(String title, String count, Color color, IconData icon) {
+    return Card(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          gradient: LinearGradient(
+            colors: [
+              color.withOpacity(0.2), 
+              Colors.transparent
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
         ),
-        textStyle: const TextStyle(
-          fontWeight: FontWeight.w600,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 30),
+              const Spacer(),
+              Text(count, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(title, style: TextStyle(fontSize: 14, color: Colors.grey[400])),
+            ],
+          ),
         ),
       ),
     );
