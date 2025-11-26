@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:flutter/material.dart'; // Para debugPrint
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -23,9 +22,7 @@ class DatabaseService {
     databaseFactory = databaseFactoryFfi;
 
     final Directory appDocumentsDir = await getApplicationDocumentsDirectory();
-    
-    // CAMBIO A V4: Para iniciar con una base de datos totalmente limpia (0 libros)
-    String path = join(appDocumentsDir.path, 'biblioteca_premium_v4.db');
+    String path = join(appDocumentsDir.path, 'biblioteca_premium_v6.db');
     
     return await openDatabase(
       path,
@@ -35,7 +32,6 @@ class DatabaseService {
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    // 1. Usuarios
     await db.execute('''
       CREATE TABLE usuarios(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +42,6 @@ class DatabaseService {
       )
     ''');
 
-    // 2. Libros (Estructura completa con estado y observación)
     await db.execute('''
       CREATE TABLE libros(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,11 +55,11 @@ class DatabaseService {
         copias INTEGER,
         copias_disponibles INTEGER,
         estado TEXT,
-        observacion TEXT
+        observacion TEXT,
+        foto_bytes BLOB
       )
     ''');
 
-    // 3. Préstamos
     await db.execute('''
       CREATE TABLE prestamos(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,7 +74,6 @@ class DatabaseService {
       )
     ''');
 
-    // Solo creamos el Admin por defecto. ¡No creamos libros!
     await db.insert('usuarios', {
       'username': 'admin',
       'password': '1234',
@@ -87,8 +81,6 @@ class DatabaseService {
       'rol': 'admin'
     });
   }
-
-  // --- MÉTODOS DE NEGOCIO ---
 
   Future<int> insertarLibro(Map<String, dynamic> row) async {
     final db = await database;
@@ -108,15 +100,9 @@ class DatabaseService {
 
   Future<Map<String, int>> obtenerEstadisticas() async {
     final db = await database;
-    // Usamos 'as int? ?? 0' para evitar errores con nulos
-    final resultLibros = await db.rawQuery('SELECT COUNT(*) as count FROM libros');
-    final totalLibros = Sqflite.firstIntValue(resultLibros) ?? 0;
-
-    final resultPrestamos = await db.rawQuery('SELECT COUNT(*) as count FROM prestamos WHERE activo = 1');
-    final prestamosActivos = Sqflite.firstIntValue(resultPrestamos) ?? 0;
-
-    final resultDisponibles = await db.rawQuery('SELECT SUM(copias_disponibles) as sum FROM libros');
-    final librosDisponibles = Sqflite.firstIntValue(resultDisponibles) ?? 0;
+    final totalLibros = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM libros')) ?? 0;
+    final prestamosActivos = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM prestamos WHERE activo = 1')) ?? 0;
+    final librosDisponibles = Sqflite.firstIntValue(await db.rawQuery('SELECT SUM(copias_disponibles) FROM libros')) ?? 0;
 
     return {
       'totalLibros': totalLibros,
@@ -151,7 +137,6 @@ class DatabaseService {
       });
       return true;
     } catch (e) {
-      debugPrint("Error: $e");
       return false;
     }
   }
@@ -161,10 +146,11 @@ class DatabaseService {
     final res = await db.query('usuarios', where: 'username = ? AND password = ?', whereArgs: [user, password]);
     return res.isNotEmpty ? res.first : null;
   }
-  
-  // Función vacía: Ya no inserta nada de prueba.
-  Future<void> insertarDatosPrueba() async {
-    // Intencionalmente vacío para que el sistema inicie limpio.
-    debugPrint("Generación de datos de prueba desactivada.");
+
+  Future<String> obtenerRutaBaseDatos() async {
+    final dbDir = await getApplicationDocumentsDirectory();
+    return join(dbDir.path, 'biblioteca_premium_v6.db');
   }
+
+  Future<void> insertarDatosPrueba() async {}
 }

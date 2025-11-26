@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import '../../../core/database/database_service.dart';
 import '../../auth/screens/login_screen.dart';
@@ -10,7 +11,6 @@ class CatalogoScreen extends StatefulWidget {
 }
 
 class _CatalogoScreenState extends State<CatalogoScreen> {
-  // Lista vacía al inicio, se llenará con la DB
   List<Map<String, dynamic>> _libros = [];
   List<Map<String, dynamic>> _librosFiltrados = [];
   bool _isLoading = true;
@@ -27,7 +27,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
     if (mounted) {
       setState(() {
         _libros = datos;
-        _librosFiltrados = datos; // Al inicio mostramos todos
+        _librosFiltrados = datos;
         _isLoading = false;
       });
     }
@@ -49,7 +49,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
     final colorDorado = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      backgroundColor: Colors.black, // Aseguramos fondo negro
+      backgroundColor: Colors.black,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: Row(
@@ -75,7 +75,6 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
       ),
       body: Column(
         children: [
-          // SECCIÓN BUSCADOR
           Container(
             padding: const EdgeInsets.fromLTRB(20, 10, 20, 30),
             decoration: BoxDecoration(
@@ -103,7 +102,6 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
             ),
           ),
 
-          // SECCIÓN GRID DE LIBROS REALES
           Expanded(
             child: _isLoading 
               ? const Center(child: CircularProgressIndicator())
@@ -116,7 +114,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 3, 
-                          childAspectRatio: 0.7,
+                          childAspectRatio: 0.65,
                           crossAxisSpacing: 16,
                           mainAxisSpacing: 16,
                         ),
@@ -133,34 +131,42 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
   }
 
   Widget _buildBookCard(Map<String, dynamic> libro, Color colorAccent) {
-    // Calculamos disponibilidad real desde la DB
     final int disponibles = libro['copias_disponibles'];
     final bool isDisponible = disponibles > 0;
+    
+    final Uint8List? fotoBytes = libro['foto_bytes'];
 
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.grey[900]!),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 5, offset: const Offset(0, 3))]
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Expanded(
-            flex: 3,
+            flex: 4,
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.grey[900],
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                image: fotoBytes != null && fotoBytes.isNotEmpty
+                  ? DecorationImage(
+                      image: MemoryImage(fotoBytes),
+                      fit: BoxFit.cover
+                    )
+                  : null
               ),
-              child: Center(
-                // Si tienes URL de imagen úsala, si no, ícono genérico
-                child: Icon(Icons.book, size: 40, color: Colors.grey[800]),
-              ),
+              child: (fotoBytes == null)
+                 ? Center(child: Icon(Icons.book, size: 50, color: Colors.grey[800]))
+                 : null,
             ),
           ),
+          
           Expanded(
-            flex: 2,
+            flex: 3,
             child: Padding(
               padding: const EdgeInsets.all(10.0),
               child: Column(
@@ -174,35 +180,42 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                         libro['titulo'],
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: colorAccent,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                        style: TextStyle(color: colorAccent, fontWeight: FontWeight.bold, fontSize: 13),
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        libro['autor'],
+                        libro['autor'] ?? 'Anónimo',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(color: Colors.grey, fontSize: 11),
                       ),
                     ],
                   ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isDisponible ? Colors.green[900]!.withOpacity(0.3) : Colors.red[900]!.withOpacity(0.3),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      isDisponible ? '$disponibles DISPONIBLES' : 'AGOTADO',
-                      style: TextStyle(
-                        color: isDisponible ? Colors.green[400] : Colors.red[400],
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold
+                  
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (libro['estado'] != null)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 4.0),
+                          child: Text("Estado: ${libro['estado']}", style: TextStyle(color: Colors.grey[600], fontSize: 10)),
+                        ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: isDisponible ? Colors.green[900]!.withOpacity(0.3) : Colors.red[900]!.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          isDisponible ? '$disponibles DISPONIBLES' : 'AGOTADO',
+                          style: TextStyle(
+                            color: isDisponible ? Colors.green[400] : Colors.red[400],
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold
+                          ),
+                        ),
                       ),
-                    ),
+                    ],
                   )
                 ],
               ),

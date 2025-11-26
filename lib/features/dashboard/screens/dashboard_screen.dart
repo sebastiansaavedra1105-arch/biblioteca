@@ -16,7 +16,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
   bool _isLoading = true;
 
-  // Variables de estado
   int totalLibros = 0;
   int prestamosActivos = 0;
   int librosDisponibles = 0;
@@ -25,6 +24,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _cargarDatos();
+    
+    DatabaseService().obtenerRutaBaseDatos().then((ruta) {
+      debugPrint("ARCHIVO DE BASE DE DATOS UBICADO EN: $ruta"); 
+    });
   }
 
   Future<void> _cargarDatos() async {
@@ -49,29 +52,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  // Lógica principal de navegación
   void _onItemTapped(int index) async {
-    // CASO 1: Si toca "Prestar" (Índice 1)
     if (index == 1) {
       await Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const NuevoPrestamoScreen()),
       );
-      _cargarDatos(); // Recargar al volver
-      return; // No cambiamos de pestaña, nos quedamos donde estábamos
+      _cargarDatos();
+      return;
     }
 
-    // CASO 2: Si toca "Nuevo Libro" (Índice 3)
     if (index == 3) {
       await Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => const AgregarLibroScreen()),
       );
-      _cargarDatos(); // Recargar al volver
-      return; // No cambiamos de pestaña
+      _cargarDatos();
+      return;
     }
 
-    // CASO 3: Navegación normal (Resumen, Devoluciones, Catálogo)
     setState(() {
       _selectedIndex = index;
     });
@@ -81,15 +80,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     final colorDorado = Theme.of(context).colorScheme.primary;
 
-    // Definimos las vistas. 
-    // NOTA: Dejamos SizedBox en los índices 1 y 3 porque esos botones abren pantallas encima, 
-    // no cambian el cuerpo del Dashboard.
     final List<Widget> widgetOptions = <Widget>[
-      _buildEstadisticasTab(colorDorado),  // Índice 0
-      const SizedBox(),                    // Índice 1 (Botón Acción: Prestar)
-      const RegistrarDevolucionScreen(),   // Índice 2
-      const SizedBox(),                    // Índice 3 (Botón Acción: Nuevo Libro)
-      const Center(child: Text('Catálogo Admin (Próximamente)')), // Índice 4
+      _buildEstadisticasTab(colorDorado),
+      const SizedBox(),
+      const RegistrarDevolucionScreen(),
+      const SizedBox(),
+      const Center(child: Text('Catálogo Admin (Próximamente)')),
     ];
 
     return Scaffold(
@@ -115,14 +111,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ],
       ),
       
-      // Cuerpo de la app
       body: _isLoading 
         ? const Center(child: CircularProgressIndicator()) 
         : widgetOptions.elementAt(_selectedIndex),
 
-      // --- BARRA DE NAVEGACIÓN CON 5 ITEMS ---
       bottomNavigationBar: BottomNavigationBar(
-        // 'fixed' es obligatorio cuando hay más de 3 items para que se vean los textos y colores bien
         type: BottomNavigationBarType.fixed, 
         backgroundColor: Colors.black,
         selectedItemColor: colorDorado,
@@ -130,27 +123,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
         items: const <BottomNavigationBarItem>[
-          // 0. Resumen
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard), 
             label: 'Resumen'
           ),
-          // 1. Prestar (Acción)
           BottomNavigationBarItem(
             icon: Icon(Icons.add_circle_outline, size: 30), 
             label: 'Prestar'
           ),
-          // 2. Devoluciones
           BottomNavigationBarItem(
             icon: Icon(Icons.assignment_return), 
             label: 'Devolver'
           ),
-          // 3. Nuevo Libro (Acción)
           BottomNavigationBarItem(
             icon: Icon(Icons.book, size: 30), 
-            label: 'Agregar Libro'
+            label: 'Add Libro'
           ),
-          // 4. Inventario
           BottomNavigationBarItem(
             icon: Icon(Icons.list), 
             label: 'Inventario'
@@ -170,7 +158,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 20),
             const Text("La base de datos está vacía", style: TextStyle(fontSize: 18, color: Colors.grey)),
             const SizedBox(height: 30),
-            const Text("Usa el botón 'Agregar Libro' abajo 👇", style: TextStyle(color: Colors.grey)),
+            const Text("Usa el botón 'Add Libro' abajo 👇", style: TextStyle(color: Colors.grey)),
           ],
         ),
       );
@@ -186,9 +174,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           
           Expanded(
             child: GridView.count(
-              crossAxisCount: 4,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
+              crossAxisCount: 2,
+              crossAxisSpacing: 16,
+              mainAxisSpacing: 16,
               childAspectRatio: 1.1,
               children: [
                 _buildStatCard('Total Libros', totalLibros.toString(), Colors.blue, Icons.menu_book),
