@@ -18,11 +18,15 @@ class DatabaseService {
   }
 
   Future<Database> _initDatabase() async {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
+    // Inicialización para Linux/Windows (FVM)
+    if (Platform.isLinux || Platform.isWindows) {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfi;
+    }
 
     final Directory appDocumentsDir = await getApplicationDocumentsDirectory();
-    String path = join(appDocumentsDir.path, 'biblioteca_premium_v6.db');
+    // CAMBIO 1: Nombre nuevo para empezar de cero con la estructura UUID
+    String path = join(appDocumentsDir.path, 'biblioteca_premium_v8_final.db');
     
     return await openDatabase(
       path,
@@ -32,9 +36,12 @@ class DatabaseService {
   }
 
   Future<void> _onCreate(Database db, int version) async {
+    // CAMBIO 2: Los ID ahora son TEXT (para UUIDs)
+    
+    // 1. Usuarios
     await db.execute('''
       CREATE TABLE usuarios(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY, 
         username TEXT UNIQUE,
         password TEXT,
         nombre TEXT,
@@ -42,9 +49,10 @@ class DatabaseService {
       )
     ''');
 
+    // 2. Libros
     await db.execute('''
       CREATE TABLE libros(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         codigo_barras TEXT UNIQUE,
         titulo TEXT,
         autor TEXT,
@@ -56,40 +64,99 @@ class DatabaseService {
         copias_disponibles INTEGER,
         estado TEXT,
         observacion TEXT,
-        foto_bytes BLOB
+        foto_bytes BLOB,
+        foto_url TEXT -- Campo nuevo para la nube
       )
     ''');
 
+    // 3. Préstamos
     await db.execute('''
       CREATE TABLE prestamos(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        libro_id INTEGER,
+        id TEXT PRIMARY KEY,
+        libro_id TEXT,
         libro_titulo TEXT,
         codigo_alumno TEXT,
         nombre_alumno TEXT,
         fecha_prestamo TEXT,
         fecha_entrega TEXT,
-        activo INTEGER,
-        FOREIGN KEY(libro_id) REFERENCES libros(id)
+        activo INTEGER -- 1 = Activo, 0 = Devuelto
       )
     ''');
 
+    // 4. NUEVA TABLA: Cola de Sincronización (Offline)
+    await db.execute('''
+      CREATE TABLE cola_sincronizacion(
+        id INTEGER PRIMARY KEY AUTOINCREMENT, -- Este sí es autoincrement local
+        accion TEXT,
+        tabla TEXT,
+        datos TEXT, -- JSON
+        registro_id TEXT,
+        fecha TEXT
+      )
+    ''');
+
+    // INSERTAR USUARIOS POR DEFECTO (Con IDs fijos para probar)
     await db.insert('usuarios', {
+      'id': 'user-001',
       'username': 'admin',
-      'password': '1234',
-      'nombre': 'Administrador Principal',
-      'rol': 'admin'
+      'password': '123',
+      'nombre': 'Encargada Biblio',
+      'rol': 'BIBLIOTECARIA'
+    });
+
+    await db.insert('usuarios', {
+      'id': 'user-002',
+      'username': 'director',
+      'password': 'dir',
+      'nombre': 'Sr. Director',
+      'rol': 'DIRECTOR'
     });
   }
 
-  Future<int> insertarLibro(Map<String, dynamic> row) async {
+  // Insertar sin preguntar (SyncService ya validó el ID)
+  Future<void> insertarDirecto(String tabla, Map<String, dynamic> datos) async {
     final db = await database;
-    return await db.insert('libros', row);
+    await db.insert(tabla, datos, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // Actualizar genérico
+  Future<void> actualizarDirecto(String tabla, Map<String, dynamic> datos, String id) async {
+    final db = await database;
+    await db.update(tabla, datos, where: 'id = ?', whereArgs: [id]);
+  }
+
+  // Eliminar genérico
+  Future<void> eliminarDirecto(String tabla, String id) async {
+    final db = await database;
+    await db.delete(tabla, where: 'id = ?', whereArgs: [id]);
+  }
+
+  // --- MÉTODOS DE LA COLA ---
+
+  Future<void> insertarCola(Map<String, dynamic> tarea) async {
+    final db = await database;
+    await db.insert('cola_sincronizacion', tarea);
+  }
+
+  Future<List<Map<String, dynamic>>> obtenerColaPendiente() async {
+    final db = await database;
+    return await db.query('cola_sincronizacion', orderBy: 'fecha ASC');
+  }
+
+  Future<void> borrarDeCola(int id) async {
+    final db = await database;
+    await db.delete('cola_sincronizacion', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<Map<String, dynamic>?> login(String user, String password) async {
+    final db = await database;
+    final res = await db.query('usuarios', where: 'username = ? AND password = ?', whereArgs: [user, password]);
+    return res.isNotEmpty ? res.first : null;
   }
 
   Future<List<Map<String, dynamic>>> obtenerTodosLosLibros() async {
     final db = await database;
-    return await db.query('libros', orderBy: 'titulo ASC');
+    return await db.query('libros', orderBy: 'id DESC');
   }
 
   Future<Map<String, dynamic>?> buscarLibroPorCodigo(String codigo) async {
@@ -102,7 +169,10 @@ class DatabaseService {
     final db = await database;
     final totalLibros = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM libros')) ?? 0;
     final prestamosActivos = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM prestamos WHERE activo = 1')) ?? 0;
-    final librosDisponibles = Sqflite.firstIntValue(await db.rawQuery('SELECT SUM(copias_disponibles) FROM libros')) ?? 0;
+    
+    // Suma de copias disponibles
+    final resultDisponibles = await db.rawQuery('SELECT SUM(copias_disponibles) as total FROM libros');
+    final librosDisponibles = (resultDisponibles.first['total'] as int?) ?? 0;
 
     return {
       'totalLibros': totalLibros,
@@ -111,86 +181,19 @@ class DatabaseService {
     };
   }
   
-  Future<bool> registrarPrestamo({
-    required int libroId,
-    required String titulo,
-    required String alumno,
-    required String nombreAlumno,
-    required DateTime entrega,
-  }) async {
-    final db = await database;
-    try {
-      await db.transaction((txn) async {
-        await txn.insert('prestamos', {
-          'libro_id': libroId,
-          'libro_titulo': titulo,
-          'codigo_alumno': alumno,
-          'nombre_alumno': nombreAlumno,
-          'fecha_prestamo': DateTime.now().toIso8601String(),
-          'fecha_entrega': entrega.toIso8601String(),
-          'activo': 1
-        });
-        await txn.rawUpdate(
-          'UPDATE libros SET copias_disponibles = copias_disponibles - 1 WHERE id = ?',
-          [libroId]
-        );
-      });
-      return true;
-    } catch (e) {
-      return false;
-    }
-  }
-
-  Future<Map<String, dynamic>?> login(String user, String password) async {
-    final db = await database;
-    final res = await db.query('usuarios', where: 'username = ? AND password = ?', whereArgs: [user, password]);
-    return res.isNotEmpty ? res.first : null;
-  }
-
-  Future<String> obtenerRutaBaseDatos() async {
-    final dbDir = await getApplicationDocumentsDirectory();
-    return join(dbDir.path, 'biblioteca_premium_v6.db');
-  }
-
-  Future<void> insertarDatosPrueba() async {}
-
   Future<List<Map<String, dynamic>>> obtenerPrestamosActivos() async {
     final db = await database;
-    // Traemos los préstamos que tienen activo = 1, ordenados por fecha de entrega
     return await db.query('prestamos', where: 'activo = 1', orderBy: 'fecha_entrega ASC');
   }
 
-  Future<void> registrarDevolucion(int prestamoId, int libroId) async {
+  Future<void> registrarDevolucionLocal(String prestamoId, String libroId) async {
     final db = await database;
     await db.transaction((txn) async {
-      // 1. Marcar préstamo como inactivo (devuelto)
       await txn.update('prestamos', {'activo': 0}, where: 'id = ?', whereArgs: [prestamoId]);
-      
-      // 2. Aumentar el stock del libro
       await txn.rawUpdate(
         'UPDATE libros SET copias_disponibles = copias_disponibles + 1 WHERE id = ?',
         [libroId]
       );
     });
   }
-
-  Future<int> actualizarLibro(Map<String, dynamic> row) async {
-    final db = await database;
-    return await db.update(
-      'libros', 
-      row, 
-      where: 'id = ?', 
-      whereArgs: [row['id']]
-    );
-  }
-
-  Future<int> eliminarLibro(int id) async {
-    final db = await database;
-    return await db.delete(
-      'libros', 
-      where: 'id = ?', 
-      whereArgs: [id]
-    );
-  }
-
 }

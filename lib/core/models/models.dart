@@ -1,6 +1,8 @@
 // lib/core/models/models.dart
+
+// SI USAS ESTA CLASE 'LIBRO', ACTUALÍZALA ASÍ (Si no, bórrala y usa libro.dart):
 class Libro {
-  final int? id;
+  final String? id; // Cambiado a String
   final String codigoBarras;
   final String titulo;
   final String autor;
@@ -26,9 +28,9 @@ class Libro {
 }
 
 class Prestamo {
-  final int? id;
-  final int libroId;
-  final String libroTitulo; // Para mostrar sin buscar en DB
+  final String? id;       // CAMBIO: String (UUID)
+  final String libroId;   // CAMBIO: String (UUID)
+  final String libroTitulo; 
   final String libroCodigoBarras;
   final String codigoAlumno;
   final String nombreAlumno;

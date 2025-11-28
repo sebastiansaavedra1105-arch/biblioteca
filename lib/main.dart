@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Providers
 import 'features/dashboard/providers/libros_provider.dart';
@@ -9,7 +10,16 @@ import 'features/auth/providers/auth_provider.dart';
 import 'features/catalogo_publico/screens/catalogo_screen.dart';
 import 'features/dashboard/screens/dashboard_screen.dart';
 
-void main() {
+Future<void> main() async {
+  // Aseguramos que los widgets estén listos antes de inicializar la app
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // INICIALIZACIÓN DE SUPABASE
+  await Supabase.initialize(
+    url: 'https://wapntjydoxzhyixhnwbk.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhcG50anlkb3h6aHlpeGhud2JrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzNDQyMTMsImV4cCI6MjA3OTkyMDIxM30.vJsRHsSJZVHiphR9oHg6JdnOoHwMqcW5de53KtdLX7U',
+  );
+
   runApp(const MyApp());
 }
 
@@ -57,7 +67,7 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// --- CONTROLADOR DE FLUJO (Responde a tu diagrama) ---
+// --- CONTROLADOR DE FLUJO ---
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 

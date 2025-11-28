@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 class Libro {
-  final int? id;
+  final String? id; // CAMBIO: Ahora es String (UUID)
   final String codigoBarras;
   final String titulo;
   final String autor;
@@ -14,6 +14,7 @@ class Libro {
   final String estado;
   final String observacion;
   final Uint8List? fotoBytes;
+  final String? fotoUrl; // NUEVO: Para soporte de imágenes en la nube
 
   Libro({
     this.id,
@@ -29,31 +30,33 @@ class Libro {
     required this.estado,
     required this.observacion,
     this.fotoBytes,
+    this.fotoUrl,
   });
 
   // Convertir de Map (BD) a Objeto (App)
   factory Libro.fromMap(Map<String, dynamic> map) {
     return Libro(
-      id: map['id'],
-      codigoBarras: map['codigo_barras'],
-      titulo: map['titulo'],
-      autor: map['autor'],
-      isbn: map['isbn'],
-      anio: map['anio'],
-      editorial: map['editorial'],
-      categoria: map['categoria'],
-      copias: map['copias'],
-      copiasDisponibles: map['copias_disponibles'],
-      estado: map['estado'],
+      id: map['id']?.toString(), // Aseguramos conversión a String
+      codigoBarras: map['codigo_barras'] ?? '',
+      titulo: map['titulo'] ?? '',
+      autor: map['autor'] ?? '',
+      isbn: map['isbn'] ?? '',
+      anio: map['anio'] ?? 0,
+      editorial: map['editorial'] ?? '',
+      categoria: map['categoria'] ?? '',
+      copias: map['copias'] ?? 0,
+      copiasDisponibles: map['copias_disponibles'] ?? 0,
+      estado: map['estado'] ?? 'Bueno',
       observacion: map['observacion'] ?? '',
-      fotoBytes: map['foto_bytes'], // BLOB viene como Uint8List en sqflite
+      fotoBytes: map['foto_bytes'], 
+      fotoUrl: map['foto_url'],
     );
   }
 
   // Convertir de Objeto (App) a Map (BD)
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      'id': id, // UUID se guarda tal cual
       'codigo_barras': codigoBarras,
       'titulo': titulo,
       'autor': autor,
@@ -66,6 +69,7 @@ class Libro {
       'estado': estado,
       'observacion': observacion,
       'foto_bytes': fotoBytes,
+      'foto_url': fotoUrl,
     };
   }
 }

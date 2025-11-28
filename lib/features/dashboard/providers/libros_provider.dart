@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../../core/database/database_service.dart';
+import '../../../core/services/sync_service.dart';
 import '../../../core/models/libro.dart';
 
 class LibrosProvider extends ChangeNotifier {
   final DatabaseService _dbService = DatabaseService();
+  final SyncService _syncService = SyncService();
 
   // --- ESTADO ---
   List<Libro> _libros = [];
@@ -17,11 +19,12 @@ class LibrosProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
-  // --- 🔥 CONSTRUCTOR MAGICO ---
-  // Apenas arranca la app, este código se ejecuta y trae los datos de la BD
+  // --- CONSTRUCTOR MAGICO ---
   LibrosProvider() {
     debugPrint("🚀 LibrosProvider INICIALIZADO - Iniciando carga automática...");
     cargarTodo();
+    // Intentamos sincronizar pendientes al abrir la app
+    _syncService.sincronizarPendientes(); 
   }
 
   // --- GETTERS ---
@@ -31,31 +34,22 @@ class LibrosProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
 
-  // --- LÓGICA DE CARGA ---
+  // --- LÓGICA DE CARGA (Lectura siempre desde Local) ---
   
   Future<void> cargarTodo() async {
-    // Solo notificamos carga si es la primera vez o si queremos bloquear la UI explícitamente
-    // Para evitar parpadeos innecesarios, a veces es mejor manejar el loading interno
     _isLoading = true;
-    // notifyListeners(); // Descomentar si quieres que TODA la app muestre loading al recargar
-
     try {
-      debugPrint("🔄 Cargando datos desde base de datos...");
-      
-      // Ejecutamos las 3 consultas en paralelo para ser más rápidos
       await Future.wait([
         cargarLibros(),
         cargarEstadisticas(),
         cargarPrestamos(),
       ]);
-      
-      debugPrint("✅ Carga completa: ${_libros.length} libros, ${_prestamosActivos.length} préstamos.");
     } catch (e) {
-      debugPrint("❌ Error general cargando datos: $e");
-      _error = "Error al cargar datos";
+      _error = "Error al cargar datos: $e";
+      debugPrint(_error);
     } finally {
       _isLoading = false;
-      notifyListeners(); // ¡Avisamos a las pantallas que ya hay datos!
+      notifyListeners();
     }
   }
 
@@ -84,20 +78,59 @@ class LibrosProvider extends ChangeNotifier {
     }
   }
 
-  // --- ACCIONES DE LIBROS ---
+  // --- ACCIONES DE ESCRITURA (Usando SyncService) ---
 
   Future<bool> agregarLibro(Libro nuevoLibro) async {
     _isLoading = true;
     notifyListeners();
     try {
-      await _dbService.insertarLibro(nuevoLibro.toMap());
-      await cargarTodo(); // Recargamos para ver el libro nuevo
+      // Preparamos el mapa y quitamos el ID si es nulo para que SyncService genere uno nuevo
+      final datos = nuevoLibro.toMap();
+      if (datos['id'] == null) {
+        datos.remove('id');
+      }
+
+      // Usamos SyncService para insertar (Local + Cola/Nube)
+      await _syncService.insertar('libros', datos);
+      
+      await cargarTodo(); // Refrescar UI
       return true;
     } catch (e) {
-      _error = "Error al guardar: Posible código duplicado";
+      _error = "Error al guardar libro: $e";
       return false;
     } finally {
       _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> editarLibro(Libro libro) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      if (libro.id == null) throw Exception("El libro no tiene ID");
+
+      // Usamos SyncService para actualizar
+      await _syncService.actualizar('libros', libro.toMap(), libro.id!);
+      
+      await cargarTodo();
+      return true;
+    } catch (e) {
+      _error = "Error al editar: $e";
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // CAMBIO: ID es String
+  Future<void> borrarLibro(String id) async {
+    try {
+      await _syncService.eliminar('libros', id);
+      await cargarTodo(); 
+    } catch (e) {
+      _error = "Error al borrar: $e";
       notifyListeners();
     }
   }
@@ -110,7 +143,7 @@ class LibrosProvider extends ChangeNotifier {
     return null;
   }
 
-  // --- ACCIONES DE PRÉSTAMOS ---
+  // --- ACCIONES DE PRÉSTAMOS (Transacciones Manuales con SyncService) ---
 
   Future<bool> registrarPrestamo({
     required Libro libro,
@@ -122,19 +155,30 @@ class LibrosProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final exito = await _dbService.registrarPrestamo(
-        libroId: libro.id!,
-        titulo: libro.titulo,
-        alumno: codigoAlumno,
-        nombreAlumno: nombreAlumno,
-        entrega: fechaEntrega,
+      // 1. Crear el Préstamo
+      final prestamoMap = {
+        'libro_id': libro.id,
+        'libro_titulo': libro.titulo,
+        'codigo_alumno': codigoAlumno,
+        'nombre_alumno': nombreAlumno,
+        'fecha_prestamo': DateTime.now().toIso8601String(),
+        'fecha_entrega': fechaEntrega.toIso8601String(),
+        'activo': 1 // 1 = True en SQLite/Supabase int
+      };
+      
+      // Insertamos el préstamo
+      await _syncService.insertar('prestamos', prestamoMap);
+
+      // 2. Actualizar el Stock del Libro (Restar 1)
+      final nuevoStock = libro.copiasDisponibles - 1;
+      await _syncService.actualizar(
+        'libros', 
+        {'copias_disponibles': nuevoStock}, 
+        libro.id!
       );
 
-      if (exito) {
-        await cargarTodo(); // Actualizamos stock y lista de préstamos
-        return true;
-      }
-      return false;
+      await cargarTodo();
+      return true;
     } catch (e) {
       _error = "Error préstamo: $e";
       return false;
@@ -144,40 +188,40 @@ class LibrosProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> devolverLibro(int prestamoId, int libroId) async {
+  // CAMBIO: IDs son String
+  Future<void> devolverLibro(String prestamoId, String libroId) async {
     try {
-      await _dbService.registrarDevolucion(prestamoId, libroId);
-      await cargarTodo(); // Actualizamos todo
+      // 1. Marcar préstamo como inactivo (devuelto)
+      await _syncService.actualizar(
+        'prestamos', 
+        {'activo': 0}, 
+        prestamoId
+      );
+
+      // 2. Buscar el libro actual en memoria para saber su stock actual
+      // (Opcional: podríamos buscarlo en DB, pero en memoria es más rápido)
+      final libroActual = _libros.firstWhere((l) => l.id == libroId, orElse: () => Libro(
+        id: 'temp', codigoBarras: '', titulo: '', autor: '', isbn: '', anio: 0, editorial: '', categoria: '', copias: 0, copiasDisponibles: 0, estado: '', observacion: ''
+      ));
+
+      if (libroActual.id != 'temp') {
+        // Aumentar stock (+1)
+        await _syncService.actualizar(
+          'libros', 
+          {'copias_disponibles': libroActual.copiasDisponibles + 1}, 
+          libroId
+        );
+      } else {
+        // Fallback si no está en memoria: usar DatabaseService para ejecutar un update directo si fuera necesario, 
+        // pero con SyncService lo ideal es enviar el valor.
+        // Por seguridad, recargamos y reintentamos o dejamos que la carga actualice.
+        debugPrint("Libro no encontrado en memoria para actualizar stock, se recomienda recargar.");
+      }
+
+      await cargarTodo();
     } catch (e) {
       _error = "Error devolución: $e";
       notifyListeners();
     }
   }
-
-  Future<bool> editarLibro(Libro libro) async {
-    _isLoading = true;
-    notifyListeners();
-    try {
-      await _dbService.actualizarLibro(libro.toMap());
-      await cargarTodo(); // Refresca la lista para ver los cambios
-      return true;
-    } catch (e) {
-      _error = "Error al editar: $e";
-      return false;
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
-  Future<void> borrarLibro(int id) async {
-    try {
-      await _dbService.eliminarLibro(id);
-      await cargarTodo(); // El libro desaparece de la lista inmediatamente
-    } catch (e) {
-      _error = "Error al borrar: $e";
-      notifyListeners();
-    }
-  }
-
 }
