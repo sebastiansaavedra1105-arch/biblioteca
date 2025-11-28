@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import '../../../core/database/database_service.dart';
+import 'package:provider/provider.dart';
+import '../../../core/models/libro.dart';
+import '../../dashboard/providers/libros_provider.dart';
 
 class NuevoPrestamoScreen extends StatefulWidget {
   const NuevoPrestamoScreen({super.key});
@@ -10,211 +12,182 @@ class NuevoPrestamoScreen extends StatefulWidget {
 
 class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _codigoLibroController = TextEditingController();
-  final _codigoAlumnoController = TextEditingController();
-  final _nombreAlumnoController = TextEditingController();
-  DateTime _fechaEntrega = DateTime.now().add(const Duration(days: 14));
+  
+  // Controladores
+  final _codLibroCtrl = TextEditingController();
+  final _codAlumnoCtrl = TextEditingController();
+  final _nomAlumnoCtrl = TextEditingController();
+  DateTime _fecha = DateTime.now().add(const Duration(days: 7));
 
-  // Variables para controlar el estado del libro buscado
-  Map<String, dynamic>? _libroEncontrado;
+  // Estado Local
+  Libro? _libro;
+  String? _errorLibro;
   bool _buscando = false;
-  String _mensajeErrorLibro = '';
 
-  // 1. Lógica para buscar libro
   Future<void> _buscarLibro() async {
-    if (_codigoLibroController.text.isEmpty) return;
+    if (_codLibroCtrl.text.isEmpty) return;
+    setState(() { _buscando = true; _errorLibro = null; _libro = null; });
 
-    setState(() {
-      _buscando = true;
-      _mensajeErrorLibro = '';
-      _libroEncontrado = null;
-    });
-
-    final libro = await DatabaseService().buscarLibroPorCodigo(_codigoLibroController.text);
+    final encontrado = await context.read<LibrosProvider>().buscarLibroPorCodigo(_codLibroCtrl.text);
 
     setState(() {
       _buscando = false;
-      if (libro != null) {
-        if (libro['copias_disponibles'] > 0) {
-          _libroEncontrado = libro;
-        } else {
-          _mensajeErrorLibro = 'El libro "${libro['titulo']}" no tiene copias disponibles.';
-        }
+      if (encontrado == null) {
+        _errorLibro = 'Libro no encontrado';
+      } else if (encontrado.copiasDisponibles < 1) {
+        _errorLibro = 'Sin stock disponible';
       } else {
-        _mensajeErrorLibro = 'Libro no encontrado con ese código.';
+        _libro = encontrado;
       }
     });
   }
 
-  // 2. Lógica para guardar préstamo
-  Future<void> _guardarPrestamo() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_libroEncontrado == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Debes buscar y seleccionar un libro válido primero.')));
-      return;
-    }
+  Future<void> _procesarPrestamo() async {
+    if (!_formKey.currentState!.validate() || _libro == null) return;
 
-    final exito = await DatabaseService().registrarPrestamo(
-      libroId: _libroEncontrado!['id'],
-      titulo: _libroEncontrado!['titulo'],
-      alumno: _codigoAlumnoController.text,
-      nombreAlumno: _nombreAlumnoController.text,
-      entrega: _fechaEntrega,
+    final exito = await context.read<LibrosProvider>().registrarPrestamo(
+      libro: _libro!,
+      codigoAlumno: _codAlumnoCtrl.text,
+      nombreAlumno: _nomAlumnoCtrl.text,
+      fechaEntrega: _fecha,
     );
 
-    if (exito) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('✅ Préstamo registrado: ${_libroEncontrado!['titulo']}'),
-          backgroundColor: Colors.green,
-        )
-      );
-      Navigator.pop(context, true); // Retorna true para actualizar el dashboard
-    } else {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error al guardar en base de datos')));
+    if (mounted && exito) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✅ Préstamo registrado: ${_libro!.titulo}'), backgroundColor: Colors.green));
+      _limpiar();
     }
+  }
+
+  void _limpiar() {
+    _codLibroCtrl.clear(); _codAlumnoCtrl.clear(); _nomAlumnoCtrl.clear();
+    setState(() { _libro = null; _fecha = DateTime.now().add(const Duration(days: 7)); });
   }
 
   @override
   Widget build(BuildContext context) {
-    final colorDorado = Theme.of(context).colorScheme.primary;
+    final dorado = Theme.of(context).colorScheme.primary;
+    final loading = context.select<LibrosProvider, bool>((p) => p.isLoading);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('REGISTRAR PRÉSTAMO')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // --- SECCIÓN BUSCADOR DE LIBRO ---
-              Text('📖 Datos del Libro', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorDorado)),
-              const SizedBox(height: 15),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextFormField(
-                      controller: _codigoLibroController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'Código de Barras (Ej: LIB001)',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.qr_code),
-                      ),
-                      onFieldSubmitted: (_) => _buscarLibro(), // Buscar al dar Enter
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: colorDorado,
-                      fixedSize: const Size(60, 60),
-                      padding: EdgeInsets.zero
-                    ),
-                    onPressed: _buscando ? null : _buscarLibro,
-                    child: _buscando 
-                      ? const CircularProgressIndicator(color: Colors.black) 
-                      : const Icon(Icons.search, color: Colors.black, size: 30),
-                  )
-                ],
-              ),
-              
-              // Mostrar resultado de búsqueda
-              if (_mensajeErrorLibro.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 10),
-                  child: Text(_mensajeErrorLibro, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                ),
-                
-              if (_libroEncontrado != null)
-                Container(
-                  margin: const EdgeInsets.only(top: 15),
-                  padding: const EdgeInsets.all(15),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    border: Border.all(color: Colors.green),
-                    borderRadius: BorderRadius.circular(10)
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("✅ ${_libroEncontrado!['titulo']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.green)),
-                      Text("Autor: ${_libroEncontrado!['autor']}"),
-                      Text("Disponibles: ${_libroEncontrado!['copias_disponibles']}", style: const TextStyle(fontWeight: FontWeight.bold)),
-                    ],
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // SECCION BUSCAR LIBRO
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _codLibroCtrl,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: _deco('Escanear Código Libro', Icons.qr_code_scanner, dorado),
+                    onFieldSubmitted: (_) => _buscarLibro(),
                   ),
                 ),
+                const SizedBox(width: 10),
+                IconButton.filled(
+                  style: IconButton.styleFrom(backgroundColor: dorado, foregroundColor: Colors.black),
+                  icon: _buscando 
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) 
+                    : const Icon(Icons.search),
+                  onPressed: _buscarLibro,
+                )
+              ],
+            ),
+            
+            if (_errorLibro != null) 
+              Padding(padding: const EdgeInsets.all(8.0), child: Text(_errorLibro!, style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
 
-              const SizedBox(height: 30),
-              
-              // --- SECCIÓN ALUMNO ---
-              Text('👤 Datos del Alumno', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: colorDorado)),
-              const SizedBox(height: 15),
-              TextFormField(
-                controller: _codigoAlumnoController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Código Alumno / DNI', border: OutlineInputBorder()),
-                validator: (value) => value!.isEmpty ? 'Requerido' : null,
-              ),
-              const SizedBox(height: 15),
-              TextFormField(
-                controller: _nombreAlumnoController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(labelText: 'Nombre Completo', border: OutlineInputBorder()),
-                validator: (value) => value!.isEmpty ? 'Requerido' : null,
-              ),
-              
-              const SizedBox(height: 20),
-              // Selector de fecha
-              ListTile(
-                title: const Text('Fecha de Entrega', style: TextStyle(color: Colors.grey)),
-                subtitle: Text(
-                  "${_fechaEntrega.day}/${_fechaEntrega.month}/${_fechaEntrega.year}", 
-                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)
+            if (_libro != null)
+              Container(
+                margin: const EdgeInsets.symmetric(vertical: 20),
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(
+                  color: Colors.green.withOpacity(0.1), 
+                  border: Border.all(color: Colors.green.withOpacity(0.5)),
+                  borderRadius: BorderRadius.circular(10)
                 ),
-                trailing: Icon(Icons.calendar_today, color: colorDorado),
-                tileColor: Colors.grey[900],
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                onTap: () async {
-                  DateTime? picked = await showDatePicker(
-                    context: context,
-                    initialDate: _fechaEntrega,
-                    firstDate: DateTime.now(),
-                    lastDate: DateTime(2030),
-                    builder: (context, child) {
-                      return Theme(
-                        data: Theme.of(context).copyWith(
-                          colorScheme: ColorScheme.dark(primary: colorDorado, onPrimary: Colors.black),
-                        ),
-                        child: child!,
-                      );
-                    }
-                  );
-                  if (picked != null) setState(() => _fechaEntrega = picked);
-                },
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(_libro!.titulo, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                  Text("Autor: ${_libro!.autor}  •  Stock: ${_libro!.copiasDisponibles}", style: TextStyle(color: Colors.grey[400])),
+                ]),
               ),
 
-              const SizedBox(height: 40),
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: colorDorado,
-                    foregroundColor: Colors.black,
-                  ),
-                  onPressed: _libroEncontrado != null ? _guardarPrestamo : null, // Solo habilitado si hay libro
-                  icon: const Icon(Icons.save),
-                  label: const Text('CONFIRMAR PRÉSTAMO', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 20),
+            const Text("DATOS DEL ALUMNO", style: TextStyle(color: Colors.grey, fontSize: 12, letterSpacing: 1.5)),
+            const SizedBox(height: 10),
+
+            _Input(label: 'Código / DNI', ctrl: _codAlumnoCtrl, icon: Icons.badge),
+            const SizedBox(height: 15),
+            _Input(label: 'Nombre Completo', ctrl: _nomAlumnoCtrl, icon: Icons.person),
+            
+            const SizedBox(height: 20),
+            
+            // SELECTOR DE FECHA
+            InkWell(
+              onTap: () async {
+                final d = await showDatePicker(
+                  context: context, initialDate: _fecha, firstDate: DateTime.now(), lastDate: DateTime(2030),
+                  builder: (c, child) => Theme(data: Theme.of(c).copyWith(colorScheme: ColorScheme.dark(primary: dorado, onPrimary: Colors.black)), child: child!)
+                );
+                if (d != null) setState(() => _fecha = d);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white24)),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text("Fecha de Entrega", style: TextStyle(color: Colors.grey[400])),
+                    Row(children: [
+                      Icon(Icons.calendar_today, color: dorado, size: 18),
+                      const SizedBox(width: 10),
+                      Text("${_fecha.day}/${_fecha.month}/${_fecha.year}", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))
+                    ])
+                  ],
                 ),
-              )
-            ],
-          ),
+              ),
+            ),
+
+            const SizedBox(height: 40),
+
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: dorado, foregroundColor: Colors.black, minimumSize: const Size.fromHeight(50)
+              ),
+              onPressed: (_libro != null && !loading) ? _procesarPrestamo : null,
+              icon: loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.check_circle),
+              label: Text(loading ? "PROCESANDO..." : "CONFIRMAR PRÉSTAMO", style: const TextStyle(fontWeight: FontWeight.bold)),
+            )
+          ],
         ),
       ),
     );
   }
+}
+
+// Widgets y decoraciones auxiliares para mantener el código corto
+class _Input extends StatelessWidget {
+  final String label; final TextEditingController ctrl; final IconData icon;
+  const _Input({required this.label, required this.ctrl, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: ctrl, style: const TextStyle(color: Colors.white),
+      validator: (v) => v!.isEmpty ? 'Requerido' : null,
+      decoration: _deco(label, icon, Theme.of(context).colorScheme.primary),
+    );
+  }
+}
+
+InputDecoration _deco(String label, IconData icon, Color color) {
+  return InputDecoration(
+    labelText: label, prefixIcon: Icon(icon, color: Colors.grey),
+    filled: true, fillColor: Colors.white10,
+    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: color)),
+  );
 }

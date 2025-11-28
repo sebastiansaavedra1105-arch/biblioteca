@@ -21,6 +21,7 @@ dependencies:
   crypto: ^3.0.7
   barcode_widget: ^2.0.4
   image_picker: ^1.1.2
+  provider: ^6.0.5
 
 dev_dependencies:
   flutter_test:

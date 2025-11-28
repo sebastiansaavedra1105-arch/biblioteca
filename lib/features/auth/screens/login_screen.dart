@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../../../core/database/database_service.dart';
-import '../../dashboard/screens/dashboard_screen.dart';
+import 'package:provider/provider.dart'; // Importante
+import '../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,33 +14,27 @@ class _LoginScreenState extends State<LoginScreen> {
   final _userController = TextEditingController();
   final _passController = TextEditingController();
   
-  bool _isLoading = false;
   bool _isObscure = true;
 
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    // Llamamos al Provider
+    final authProvider = context.read<AuthProvider>();
+    final exito = await authProvider.login(
+      _userController.text, 
+      _passController.text
+    );
 
-    // Llamamos a la base de datos
-    final dbService = DatabaseService();
-    final user = await dbService.login(_userController.text, _passController.text);
+    if (!mounted) return;
 
-    setState(() => _isLoading = false);
-
-    if (user != null) {
-      if (!mounted) return;
-      // Login Exitoso: Ir al Dashboard y borrar historial para no poder volver atrás
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const DashboardScreen()),
-        (route) => false, 
-      );
+    if (exito) {
+      Navigator.pop(context); 
     } else {
-      if (!mounted) return;
+      // Mostrar error que viene del provider
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('❌ Usuario o contraseña incorrectos'),
+          content: Text('❌ ${authProvider.errorMessage ?? "Error desconocido"}'),
           backgroundColor: Colors.red.shade900,
           behavior: SnackBarBehavior.floating,
         ),
@@ -51,86 +45,88 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final colorDorado = Theme.of(context).colorScheme.primary;
+    // Escuchamos el estado de loading del provider
+    final isLoading = context.select<AuthProvider, bool>((p) => p.isLoading);
 
     return Scaffold(
+      backgroundColor: Colors.black,
       body: Center(
-        child: Container(
-          constraints: const BoxConstraints(maxWidth: 400), // Limitar ancho en escritorio
-          padding: const EdgeInsets.all(30),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.grey[900]!),
-            boxShadow: const [
-              BoxShadow(color: Colors.black, blurRadius: 20, spreadRadius: 5)
-            ],
-          ),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.admin_panel_settings, size: 60, color: colorDorado),
-                const SizedBox(height: 20),
-                Text(
-                  "ACCESO ADMINISTRATIVO",
-                  style: TextStyle(
-                    color: colorDorado,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 40),
-                
-                // Usuario
-                TextFormField(
-                  controller: _userController,
-                  style: const TextStyle(color: Colors.white),
-                  validator: (value) => value!.isEmpty ? 'Ingresa el usuario' : null,
-                  decoration: _inputDecoration("Usuario", Icons.person, colorDorado),
-                ),
-                const SizedBox(height: 20),
-                
-                // Contraseña
-                TextFormField(
-                  controller: _passController,
-                  obscureText: _isObscure,
-                  style: const TextStyle(color: Colors.white),
-                  validator: (value) => value!.isEmpty ? 'Ingresa la contraseña' : null,
-                  decoration: _inputDecoration("Contraseña", Icons.lock, colorDorado).copyWith(
-                    suffixIcon: IconButton(
-                      icon: Icon(_isObscure ? Icons.visibility : Icons.visibility_off, color: Colors.grey),
-                      onPressed: () => setState(() => _isObscure = !_isObscure),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(Icons.admin_panel_settings, size: 80, color: colorDorado),
+                  const SizedBox(height: 20),
+                  Text(
+                    "ACCESO ADMINISTRATIVO",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: colorDorado,
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5,
                     ),
                   ),
-                ),
-                
-                const SizedBox(height: 40),
-                
-                // Botón
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: colorDorado,
-                      foregroundColor: Colors.black,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    ),
-                    onPressed: _isLoading ? null : _handleLogin,
-                    child: _isLoading 
-                      ? const CircularProgressIndicator(color: Colors.black)
-                      : const Text("INGRESAR", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  const SizedBox(height: 40),
+                  
+                  // INPUT USUARIO
+                  TextFormField(
+                    controller: _userController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: _inputDecoration("Usuario", Icons.person, colorDorado),
+                    validator: (v) => v!.isEmpty ? 'Ingrese usuario' : null,
                   ),
-                ),
-                
-                const SizedBox(height: 20),
-                TextButton(
-                  onPressed: () => Navigator.pop(context), // Volver al catálogo
-                  child: const Text("Volver al Catálogo", style: TextStyle(color: Colors.grey)),
-                )
-              ],
+                  const SizedBox(height: 20),
+
+                  // INPUT PASSWORD
+                  TextFormField(
+                    controller: _passController,
+                    obscureText: _isObscure,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: _inputDecoration("Contraseña", Icons.lock, colorDorado).copyWith(
+                      suffixIcon: IconButton(
+                        icon: Icon(_isObscure ? Icons.visibility : Icons.visibility_off, color: Colors.grey),
+                        onPressed: () => setState(() => _isObscure = !_isObscure),
+                      ),
+                    ),
+                    validator: (v) => v!.isEmpty ? 'Ingrese contraseña' : null,
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // BOTÓN INGRESAR
+                  SizedBox(
+                    height: 55,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: colorDorado,
+                        foregroundColor: Colors.black,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      ),
+                      onPressed: isLoading ? null : _handleLogin,
+                      child: isLoading 
+                        ? const SizedBox(
+                            width: 24, 
+                            height: 24, 
+                            child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2)
+                          )
+                        : const Text("INGRESAR", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 20),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context), // Volver al catálogo
+                    child: const Text("Volver al Catálogo", style: TextStyle(color: Colors.grey)),
+                  )
+                ],
+              ),
             ),
           ),
         ),

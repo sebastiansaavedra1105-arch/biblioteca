@@ -153,4 +153,44 @@ class DatabaseService {
   }
 
   Future<void> insertarDatosPrueba() async {}
+
+  Future<List<Map<String, dynamic>>> obtenerPrestamosActivos() async {
+    final db = await database;
+    // Traemos los préstamos que tienen activo = 1, ordenados por fecha de entrega
+    return await db.query('prestamos', where: 'activo = 1', orderBy: 'fecha_entrega ASC');
+  }
+
+  Future<void> registrarDevolucion(int prestamoId, int libroId) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      // 1. Marcar préstamo como inactivo (devuelto)
+      await txn.update('prestamos', {'activo': 0}, where: 'id = ?', whereArgs: [prestamoId]);
+      
+      // 2. Aumentar el stock del libro
+      await txn.rawUpdate(
+        'UPDATE libros SET copias_disponibles = copias_disponibles + 1 WHERE id = ?',
+        [libroId]
+      );
+    });
+  }
+
+  Future<int> actualizarLibro(Map<String, dynamic> row) async {
+    final db = await database;
+    return await db.update(
+      'libros', 
+      row, 
+      where: 'id = ?', 
+      whereArgs: [row['id']]
+    );
+  }
+
+  Future<int> eliminarLibro(int id) async {
+    final db = await database;
+    return await db.delete(
+      'libros', 
+      where: 'id = ?', 
+      whereArgs: [id]
+    );
+  }
+
 }
