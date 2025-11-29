@@ -18,15 +18,15 @@ class DatabaseService {
   }
 
   Future<Database> _initDatabase() async {
-    // Inicialización para Linux/Windows (FVM)
     if (Platform.isLinux || Platform.isWindows) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
 
     final Directory appDocumentsDir = await getApplicationDocumentsDirectory();
-    // CAMBIO 1: Nombre nuevo para empezar de cero con la estructura UUID
-    String path = join(appDocumentsDir.path, 'biblioteca_premium_v8_final.db');
+    
+    // CAMBIO IMPORTANTE: Subimos a v9 para empezar limpio y compatible
+    String path = join(appDocumentsDir.path, 'biblioteca_premium_v9_final.db');
     
     return await openDatabase(
       path,
@@ -36,8 +36,8 @@ class DatabaseService {
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    // CAMBIO 2: Los ID ahora son TEXT (para UUIDs)
-    
+    // TABLAS ACTUALIZADAS (Con created_at y updated_at para Supabase)
+
     // 1. Usuarios
     await db.execute('''
       CREATE TABLE usuarios(
@@ -45,7 +45,9 @@ class DatabaseService {
         username TEXT UNIQUE,
         password TEXT,
         nombre TEXT,
-        rol TEXT
+        rol TEXT,
+        created_at TEXT,
+        updated_at TEXT
       )
     ''');
 
@@ -65,7 +67,9 @@ class DatabaseService {
         estado TEXT,
         observacion TEXT,
         foto_bytes BLOB,
-        foto_url TEXT -- Campo nuevo para la nube
+        foto_url TEXT,
+        created_at TEXT,
+        updated_at TEXT
       )
     ''');
 
@@ -79,23 +83,25 @@ class DatabaseService {
         nombre_alumno TEXT,
         fecha_prestamo TEXT,
         fecha_entrega TEXT,
-        activo INTEGER -- 1 = Activo, 0 = Devuelto
+        activo INTEGER,
+        created_at TEXT,
+        updated_at TEXT
       )
     ''');
 
-    // 4. NUEVA TABLA: Cola de Sincronización (Offline)
+    // 4. Cola de Sincronización
     await db.execute('''
       CREATE TABLE cola_sincronizacion(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, -- Este sí es autoincrement local
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         accion TEXT,
         tabla TEXT,
-        datos TEXT, -- JSON
+        datos TEXT,
         registro_id TEXT,
         fecha TEXT
       )
     ''');
 
-    // INSERTAR USUARIOS POR DEFECTO (Con IDs fijos para probar)
+    // Insertar usuarios por defecto
     await db.insert('usuarios', {
       'id': 'user-001',
       'username': 'admin',
@@ -113,25 +119,22 @@ class DatabaseService {
     });
   }
 
-  // Insertar sin preguntar (SyncService ya validó el ID)
+  // --- MÉTODOS GENÉRICOS ---
+
   Future<void> insertarDirecto(String tabla, Map<String, dynamic> datos) async {
     final db = await database;
     await db.insert(tabla, datos, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  // Actualizar genérico
   Future<void> actualizarDirecto(String tabla, Map<String, dynamic> datos, String id) async {
     final db = await database;
     await db.update(tabla, datos, where: 'id = ?', whereArgs: [id]);
   }
 
-  // Eliminar genérico
   Future<void> eliminarDirecto(String tabla, String id) async {
     final db = await database;
     await db.delete(tabla, where: 'id = ?', whereArgs: [id]);
   }
-
-  // --- MÉTODOS DE LA COLA ---
 
   Future<void> insertarCola(Map<String, dynamic> tarea) async {
     final db = await database;
@@ -147,6 +150,8 @@ class DatabaseService {
     final db = await database;
     await db.delete('cola_sincronizacion', where: 'id = ?', whereArgs: [id]);
   }
+
+  // --- MÉTODOS DE CONSULTA ---
 
   Future<Map<String, dynamic>?> login(String user, String password) async {
     final db = await database;
@@ -169,8 +174,6 @@ class DatabaseService {
     final db = await database;
     final totalLibros = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM libros')) ?? 0;
     final prestamosActivos = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM prestamos WHERE activo = 1')) ?? 0;
-    
-    // Suma de copias disponibles
     final resultDisponibles = await db.rawQuery('SELECT SUM(copias_disponibles) as total FROM libros');
     final librosDisponibles = (resultDisponibles.first['total'] as int?) ?? 0;
 
