@@ -11,9 +11,10 @@ class AuthProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get errorMessage => _errorMessage;
   Map<String, dynamic>? get usuarioActual => _usuarioActual;
-  
-  // Si usuarioActual tiene datos, es true. Si es null, es false.
+
+  // 🔥 NUEVO: Saber si es el Director
   bool get estaAutenticado => _usuarioActual != null;
+  bool get esDirector => _usuarioActual?['rol'] == 'DIRECTOR';
 
   Future<bool> login(String username, String password) async {
     _isLoading = true;
@@ -21,13 +22,13 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 500)); // Simular carga
+      await Future.delayed(const Duration(milliseconds: 500)); 
       final usuario = await _dbService.login(username, password);
 
       if (usuario != null) {
         _usuarioActual = usuario;
         _isLoading = false;
-        notifyListeners(); // Esto avisará al main.dart para cambiar de pantalla automáticamente
+        notifyListeners(); 
         return true;
       } else {
         _errorMessage = 'Credenciales incorrectas';
@@ -45,6 +46,6 @@ class AuthProvider extends ChangeNotifier {
 
   void logout() {
     _usuarioActual = null;
-    notifyListeners(); // Esto avisará al main.dart para volver al Catálogo automáticamente
+    notifyListeners();
   }
 }

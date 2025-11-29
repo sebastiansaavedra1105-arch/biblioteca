@@ -9,9 +9,8 @@ import 'features/auth/providers/auth_provider.dart';
 // Pantallas
 import 'features/catalogo_publico/screens/catalogo_screen.dart';
 import 'features/dashboard/screens/dashboard_screen.dart';
-
+import 'features/dashboard/screens/director_dashboard_screen.dart'; 
 Future<void> main() async {
-  // Aseguramos que los widgets estén listos antes de inicializar la app
   WidgetsFlutterBinding.ensureInitialized();
 
   // INICIALIZACIÓN DE SUPABASE
@@ -41,7 +40,7 @@ class MyApp extends StatelessWidget {
           brightness: Brightness.dark,
           scaffoldBackgroundColor: const Color(0xFF000000),
           colorScheme: const ColorScheme.dark(
-            primary: Color(0xFFD4AF37),
+            primary: Color(0xFFD4AF37),    // Dorado
             surface: Color(0xFF121212),
             onPrimary: Colors.black,
           ),
@@ -76,11 +75,20 @@ class AuthWrapper extends StatelessWidget {
     // Escuchamos al AuthProvider
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
-        // ¿Está logueado?
+        
+        // 1. ¿Está Logueado?
         if (authProvider.estaAutenticado) {
-          return const DashboardScreen(); // Flecha "SI" del diagrama
+          
+          // 2. ¿Es el Director?
+          if (authProvider.esDirector) {
+             return const DirectorDashboardScreen();
+          } else {
+             return const DashboardScreen();
+          }
+
         } else {
-          return const CatalogoScreen();  // Flecha "NO" del diagrama
+          // 3. No logueado -> Público
+          return const CatalogoScreen(); 
         }
       },
     );
