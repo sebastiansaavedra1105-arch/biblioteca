@@ -88,6 +88,38 @@ class SyncService {
     }
   }
 
+  // --- 4. DESCARGAR DE LA NUBE (PARA EL DIRECTOR) ---
+  Future<int> descargarDatosNube() async {
+    if (!await _hayInternet()) {
+      debugPrint("📴 No hay internet para descargar.");
+      return 0; // 0 cambios
+    }
+
+    try {
+      debugPrint("⬇️ Iniciando descarga masiva...");
+      
+      // A. Descargar Libros
+      final librosNube = await _supabase.from('libros').select();
+      for (var map in librosNube) {
+        // Guardamos en local (replace sobrescribe si ya existe)
+        await _localDb.insertarDirecto('libros', map);
+      }
+
+      // B. Descargar Préstamos
+      final prestamosNube = await _supabase.from('prestamos').select();
+      for (var map in prestamosNube) {
+        await _localDb.insertarDirecto('prestamos', map);
+      }
+
+      debugPrint("✅ Descarga completada: ${librosNube.length} libros, ${prestamosNube.length} préstamos.");
+      return librosNube.length + prestamosNube.length;
+
+    } catch (e) {
+      debugPrint("❌ Error descargando datos: $e");
+      return -1; // Error
+    }
+  }
+  
   // --- UTILIDADES ---
 
   Future<bool> _hayInternet() async {

@@ -5,12 +5,13 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:barcode_widget/barcode_widget.dart'; // <--- IMPORTANTE
 
 import '../../../core/models/libro.dart';
 import '../../dashboard/providers/libros_provider.dart';
 
 class AgregarLibroScreen extends StatefulWidget {
-  final Libro? libroParaEditar; // <--- ESTO ES LA CLAVE
+  final Libro? libroParaEditar;
 
   const AgregarLibroScreen({super.key, this.libroParaEditar});
 
@@ -24,6 +25,15 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
   // Controllers
   late Map<String, TextEditingController> _ctrls;
   String _estado = 'Bueno';
+  
+  String _categoria = 'General';
+  final List<String> _categorias = [
+    'General', 'Ficción', 'No Ficción', 'Ciencia', 'Historia', 
+    'Tecnología', 'Arte', 'Matemáticas', 'Literatura', 
+    'Comunicación', 'Ciencias Sociales', 'Libros del Estado (Minedu)', 
+    'Idiomas', 'Religión', 'Otro'
+  ];
+
   Uint8List? _imgBytes;
   bool _esEdicion = false;
 
@@ -32,7 +42,6 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
     super.initState();
     _esEdicion = widget.libroParaEditar != null;
     
-    // Si es edición, llenamos con los datos del libro. Si no, vacío.
     final l = widget.libroParaEditar;
     
     _ctrls = {
@@ -49,12 +58,19 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
     if (_esEdicion) {
       _estado = l!.estado;
       _imgBytes = l.fotoBytes;
+      if (_categorias.contains(l.categoria)) {
+        _categoria = l.categoria;
+      } else {
+        _categoria = 'General'; 
+      }
     }
   }
 
   void _generarCodigo() {
-    _ctrls['cod']!.text = "LIB${10000000 + Random().nextInt(90000000)}";
-    setState(() {});
+    // Generamos un número aleatorio de 8 dígitos
+    final codigo = "LIB${10000000 + Random().nextInt(90000000)}";
+    _ctrls['cod']!.text = codigo;
+    setState(() {}); // Actualiza la UI para mostrar el código de barras
   }
 
   Future<void> _pickImage() async {
@@ -70,18 +86,17 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
     
     final p = context.read<LibrosProvider>();
     
-    // Objeto libro con los datos del formulario
     final libroForm = Libro(
-      id: widget.libroParaEditar?.id, // IMPORTANTE: Mantener el ID si es edición
+      id: widget.libroParaEditar?.id,
       codigoBarras: _ctrls['cod']!.text,
       titulo: _ctrls['tit']!.text,
       autor: _ctrls['aut']!.text.isEmpty ? 'Anónimo' : _ctrls['aut']!.text,
       isbn: _ctrls['isbn']!.text,
-      anio: int.tryParse(_ctrls['anio']!.text) ?? 2024,
+      anio: int.tryParse(_ctrls['anio']!.text) ?? DateTime.now().year,
       editorial: _ctrls['edit']!.text,
-      categoria: 'General',
+      categoria: _categoria,
       copias: int.parse(_ctrls['cop']!.text),
-      copiasDisponibles: int.parse(_ctrls['cop']!.text), // Nota: Esto reinicia el stock disponible al total
+      copiasDisponibles: int.parse(_ctrls['cop']!.text),
       estado: _estado,
       observacion: _ctrls['obs']!.text,
       fotoBytes: _imgBytes,
@@ -100,9 +115,9 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
       );
       
       if (_esEdicion) {
-        Navigator.pop(context); // Si editamos, cerramos la pantalla
+        Navigator.pop(context);
       } else {
-        _limpiarFormulario(); // Si agregamos, limpiamos para seguir agregando
+        _limpiarFormulario();
       }
     }
   }
@@ -113,6 +128,7 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
       _imgBytes = null;
       _ctrls['cop']!.text = '1';
       _estado = 'Bueno';
+      _categoria = 'General';
     });
   }
 
@@ -121,8 +137,6 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
     final loading = context.select<LibrosProvider, bool>((p) => p.isLoading);
     final dorado = Theme.of(context).colorScheme.primary;
 
-    // Si es edición, queremos un Scaffold con AppBar para poder volver atrás
-    // Si es agregar (pestaña), devolvemos solo el contenido
     Widget contenido = SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Form(
@@ -134,10 +148,10 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
               const SizedBox(height: 20),
             ],
             
-            // FOTO Y CODIGO
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // FOTO
                 GestureDetector(
                   onTap: _pickImage,
                   child: Container(
@@ -154,13 +168,42 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
                   ),
                 ),
                 const SizedBox(width: 15),
+                // CÓDIGO + BARRAS
                 Expanded(
                   child: Column(
                     children: [
                       _Input(label: 'Código *', ctrl: _ctrls['cod']!, icon: Icons.qr_code, 
+                        // Al escribir manualmente también actualizamos el gráfico
+                        onChanged: (val) => setState((){}), 
                         suffix: IconButton(icon: const Icon(Icons.bolt, color: Colors.orange), onPressed: _generarCodigo)),
+                      
                       const SizedBox(height: 10),
-                      _Input(label: 'ISBN', ctrl: _ctrls['isbn']!, icon: Icons.numbers),
+                      
+                      // --- AQUÍ ESTÁ EL GRÁFICO DE BARRAS ---
+                      if (_ctrls['cod']!.text.isNotEmpty)
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white, // Fondo BLANCO obligatorio para lectores
+                            borderRadius: BorderRadius.circular(8)
+                          ),
+                          child: Column(
+                            children: [
+                              BarcodeWidget(
+                                barcode: Barcode.code128(), // Estándar bibliotecas
+                                data: _ctrls['cod']!.text,
+                                width: double.infinity,
+                                height: 60,
+                                drawText: true,
+                              ),
+                              const SizedBox(height: 5),
+                              const Text("Listo para escanear/imprimir", style: TextStyle(color: Colors.black54, fontSize: 10))
+                            ],
+                          ),
+                        ),
+                      
+                      const SizedBox(height: 10),
+                      _Input(label: 'ISBN (Opcional)', ctrl: _ctrls['isbn']!, icon: Icons.numbers),
                     ],
                   ),
                 )
@@ -168,7 +211,7 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
             ),
             const SizedBox(height: 20),
 
-            // DATOS PRINCIPALES
+            // RESTO DEL FORMULARIO
             _Input(label: 'Título del Libro *', ctrl: _ctrls['tit']!, icon: Icons.book, req: true),
             const SizedBox(height: 15),
             Row(children: [
@@ -177,11 +220,33 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
               Expanded(child: _Input(label: 'Año', ctrl: _ctrls['anio']!, isNum: true)),
             ]),
             const SizedBox(height: 15),
-            _Input(label: 'Editorial', ctrl: _ctrls['edit']!, icon: Icons.business),
+
+            Row(children: [
+              Expanded(
+                flex: 1, 
+                child: _Input(label: 'Editorial', ctrl: _ctrls['edit']!, icon: Icons.business)
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 1,
+                child: DropdownButtonFormField<String>(
+                  value: _categoria,
+                  dropdownColor: Colors.grey[900],
+                  isExpanded: true,
+                  decoration: _inputDeco('Categoría', Icons.category, dorado),
+                  items: _categorias.map((e) => DropdownMenuItem(
+                    value: e, 
+                    child: Text(e, style: const TextStyle(color: Colors.white, fontSize: 13), overflow: TextOverflow.ellipsis)
+                  )).toList(),
+                  onChanged: (v) => setState(() => _categoria = v!),
+                ),
+              ),
+            ]),
+            
             const SizedBox(height: 15),
 
             Row(children: [
-              Expanded(child: _Input(label: 'Copias Totales *', ctrl: _ctrls['cop']!, isNum: true, req: true)),
+              Expanded(child: _Input(label: 'Copias *', ctrl: _ctrls['cop']!, isNum: true, req: true)),
               const SizedBox(width: 10),
               Expanded(
                 child: DropdownButtonFormField<String>(
@@ -211,7 +276,6 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
       ),
     );
 
-    // Si es edición, lo envolvemos en Scaffold para tener botón de "Atrás"
     if (_esEdicion) {
       return Scaffold(
         appBar: AppBar(title: const Text("Editar Libro")),
@@ -224,14 +288,17 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
 }
 
 class _Input extends StatelessWidget {
-  final String label; final TextEditingController ctrl; final IconData? icon; final bool isNum; final bool req; final Widget? suffix;
-  const _Input({required this.label, required this.ctrl, this.icon, this.isNum = false, this.req = false, this.suffix});
+  final String label; final TextEditingController ctrl; final IconData? icon; final bool isNum; final bool req; final Widget? suffix; final Function(String)? onChanged;
+  
+  const _Input({required this.label, required this.ctrl, this.icon, this.isNum = false, this.req = false, this.suffix, this.onChanged});
+  
   @override
   Widget build(BuildContext context) {
     return TextFormField(
       controller: ctrl,
       keyboardType: isNum ? TextInputType.number : TextInputType.text,
       style: const TextStyle(color: Colors.white),
+      onChanged: onChanged, // Para actualizar el gráfico al escribir
       validator: req ? (v) => v!.isEmpty ? 'Requerido' : null : null,
       decoration: _inputDeco(label, icon, Theme.of(context).colorScheme.primary).copyWith(suffixIcon: suffix),
     );

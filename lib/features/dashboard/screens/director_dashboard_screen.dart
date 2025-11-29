@@ -46,10 +46,28 @@ class _DirectorDashboardScreenState extends State<DirectorDashboardScreen> {
           IconButton(
             icon: const Icon(Icons.cloud_download),
             tooltip: 'Descargar datos de la Encargada',
-            onPressed: () {
-               // Aquí pondremos la lógica de descarga luego
-               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Sincronizando con la nube...")));
-               context.read<LibrosProvider>().cargarTodo();
+            onPressed: () async {
+               // Feedback visual inmediato
+               ScaffoldMessenger.of(context).showSnackBar(
+                 const SnackBar(
+                   content: Text("⏳ Descargando datos de la nube..."),
+                   duration: Duration(seconds: 2),
+                 )
+               );
+               
+               // Llamada real a la sincronización
+               await context.read<LibrosProvider>().sincronizarDesdeNube();
+
+               // Confirmación (si el widget sigue vivo)
+               if (context.mounted) {
+                 ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                 ScaffoldMessenger.of(context).showSnackBar(
+                   const SnackBar(
+                     content: Text("✅ Datos actualizados correctamente"),
+                     backgroundColor: Colors.green,
+                   )
+                 );
+               }
             },
           ),
           IconButton(

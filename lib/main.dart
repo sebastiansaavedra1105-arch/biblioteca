@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 // Providers
 import 'features/dashboard/providers/libros_provider.dart';
@@ -35,6 +36,16 @@ class MyApp extends StatelessWidget {
       child: MaterialApp(
         title: 'Biblioteca Premium',
         debugShowCheckedModeBanner: false,
+
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('es', 'ES'), // Español
+        ],
+
         theme: ThemeData(
           useMaterial3: true,
           brightness: Brightness.dark,

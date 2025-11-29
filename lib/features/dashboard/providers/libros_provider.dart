@@ -224,4 +224,29 @@ class LibrosProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
+
+  // --- ACCIÓN DE DIRECTOR (SYNC DOWN) ---
+  Future<void> sincronizarDesdeNube() async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // 1. Descargamos de Supabase a SQLite
+      final cantidad = await _syncService.descargarDatosNube();
+      
+      if (cantidad >= 0) {
+        // 2. Si bajó algo, recargamos la memoria desde SQLite
+        await cargarTodo();
+        _error = null; // Limpiamos errores previos
+      } else {
+        _error = "Error al descargar datos de la nube";
+      }
+    } catch (e) {
+      _error = "Fallo de conexión: $e";
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
 }
