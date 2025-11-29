@@ -88,11 +88,11 @@ class SyncService {
     }
   }
 
-  // --- 4. DESCARGAR DE LA NUBE (PARA EL DIRECTOR) ---
+ // --- 4. DESCARGAR DE LA NUBE (PARA EL DIRECTOR) ---
   Future<int> descargarDatosNube() async {
     if (!await _hayInternet()) {
       debugPrint("📴 No hay internet para descargar.");
-      return 0; // 0 cambios
+      return 0; 
     }
 
     try {
@@ -101,14 +101,22 @@ class SyncService {
       // A. Descargar Libros
       final librosNube = await _supabase.from('libros').select();
       for (var map in librosNube) {
-        // Guardamos en local (replace sobrescribe si ya existe)
+        // Corrección: Asegurar que no venga basura
         await _localDb.insertarDirecto('libros', map);
       }
 
-      // B. Descargar Préstamos
+      // B. Descargar Préstamos (AQUÍ ESTABA EL ERROR)
       final prestamosNube = await _supabase.from('prestamos').select();
       for (var map in prestamosNube) {
-        await _localDb.insertarDirecto('prestamos', map);
+        // Creamos una copia modificable del mapa
+        final datoLimpio = Map<String, dynamic>.from(map);
+
+        // TRADUCCIÓN: Si 'activo' viene como bool (true/false), lo pasamos a int (1/0)
+        if (datoLimpio['activo'] is bool) {
+          datoLimpio['activo'] = (datoLimpio['activo'] == true) ? 1 : 0;
+        }
+
+        await _localDb.insertarDirecto('prestamos', datoLimpio);
       }
 
       debugPrint("✅ Descarga completada: ${librosNube.length} libros, ${prestamosNube.length} préstamos.");
@@ -116,7 +124,7 @@ class SyncService {
 
     } catch (e) {
       debugPrint("❌ Error descargando datos: $e");
-      return -1; // Error
+      return -1; 
     }
   }
   
