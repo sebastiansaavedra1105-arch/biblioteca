@@ -12,7 +12,6 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   Map<String, dynamic>? get usuarioActual => _usuarioActual;
 
-  // 🔥 NUEVO: Saber si es el Director
   bool get estaAutenticado => _usuarioActual != null;
   bool get esDirector => _usuarioActual?['rol'] == 'DIRECTOR';
 
@@ -22,7 +21,9 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      await Future.delayed(const Duration(milliseconds: 500)); 
+      // Simulación de red (opcional, se puede quitar para producción)
+      await Future.delayed(const Duration(milliseconds: 300)); 
+      
       final usuario = await _dbService.login(username, password);
 
       if (usuario != null) {
@@ -31,17 +32,27 @@ class AuthProvider extends ChangeNotifier {
         notifyListeners(); 
         return true;
       } else {
-        _errorMessage = 'Credenciales incorrectas';
+        _errorMessage = 'Usuario o contraseña incorrectos';
         _isLoading = false;
         notifyListeners();
         return false;
       }
     } catch (e) {
-      _errorMessage = 'Error: $e';
+      _errorMessage = 'Error de conexión o base de datos: $e';
       _isLoading = false;
       notifyListeners();
       return false;
     }
+  }
+
+  Future<bool> cambiarContrasena(String nuevaPassword) async {
+    if (_usuarioActual == null) return false;
+    
+    final exito = await _dbService.cambiarPassword(_usuarioActual!['id'], nuevaPassword);
+    if (exito) {
+      notifyListeners();
+    }
+    return exito;
   }
 
   void logout() {

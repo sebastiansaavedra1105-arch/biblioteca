@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart'; // Importante
+import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -19,10 +19,13 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // Llamamos al Provider
     final authProvider = context.read<AuthProvider>();
+    
+    // Cerramos el teclado antes de intentar login
+    FocusScope.of(context).unfocus();
+
     final exito = await authProvider.login(
-      _userController.text, 
+      _userController.text.trim(), // Importante: Trim para quitar espacios accidentales
       _passController.text
     );
 
@@ -31,10 +34,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (exito) {
       Navigator.pop(context); 
     } else {
-      // Mostrar error que viene del provider
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('❌ ${authProvider.errorMessage ?? "Error desconocido"}'),
+          content: Text('❌ ${authProvider.errorMessage ?? "Error de acceso"}'),
           backgroundColor: Colors.red.shade900,
           behavior: SnackBarBehavior.floating,
         ),
@@ -45,7 +47,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final colorDorado = Theme.of(context).colorScheme.primary;
-    // Escuchamos el estado de loading del provider
     final isLoading = context.select<AuthProvider, bool>((p) => p.isLoading);
 
     return Scaffold(
@@ -61,10 +62,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(Icons.admin_panel_settings, size: 80, color: colorDorado),
+                  Icon(Icons.shield, size: 80, color: colorDorado), // Icono de escudo para seguridad
                   const SizedBox(height: 20),
                   Text(
-                    "ACCESO ADMINISTRATIVO",
+                    "ACCESO SEGURO",
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       color: colorDorado,
@@ -75,7 +76,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 40),
                   
-                  // INPUT USUARIO
                   TextFormField(
                     controller: _userController,
                     style: const TextStyle(color: Colors.white),
@@ -84,7 +84,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                   const SizedBox(height: 20),
 
-                  // INPUT PASSWORD
                   TextFormField(
                     controller: _passController,
                     obscureText: _isObscure,
@@ -100,7 +99,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 40),
 
-                  // BOTÓN INGRESAR
                   SizedBox(
                     height: 55,
                     child: ElevatedButton(
@@ -122,7 +120,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   
                   const SizedBox(height: 20),
                   TextButton(
-                    onPressed: () => Navigator.pop(context), // Volver al catálogo
+                    onPressed: () => Navigator.pop(context),
                     child: const Text("Volver al Catálogo", style: TextStyle(color: Colors.grey)),
                   )
                 ],
@@ -139,6 +137,8 @@ class _LoginScreenState extends State<LoginScreen> {
       labelText: label,
       labelStyle: const TextStyle(color: Colors.grey),
       prefixIcon: Icon(icon, color: color),
+      filled: true,
+      fillColor: const Color(0xFF1A1A1A),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: BorderSide(color: Colors.grey[800]!),

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:bcrypt/bcrypt.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
@@ -25,8 +26,8 @@ class DatabaseService {
 
     final Directory appDocumentsDir = await getApplicationDocumentsDirectory();
     
-    // CAMBIO IMPORTANTE: Subimos a v9 para empezar limpio y compatible
-    String path = join(appDocumentsDir.path, 'biblioteca_premium_v9_final.db');
+    // Subimos versión a v11 para forzar la recreación de tablas con las nuevas contraseñas hasheadas
+    String path = join(appDocumentsDir.path, 'biblioteca_premium_v11_secure.db');
     
     return await openDatabase(
       path,
@@ -35,9 +36,14 @@ class DatabaseService {
     );
   }
 
-  Future<void> _onCreate(Database db, int version) async {
-    // TABLAS ACTUALIZADAS (Con created_at y updated_at para Supabase)
+  // --- SEGURIDAD: Generación de Hash Seguro ---
+  String _hashPassword(String password) {
+    // Genera un 'salt' único y hashea. Nunca genera el mismo hash dos veces para la misma clave.
+    final String hashed = BCrypt.hashpw(password, BCrypt.gensalt());
+    return hashed;
+  }
 
+  Future<void> _onCreate(Database db, int version) async {
     // 1. Usuarios
     await db.execute('''
       CREATE TABLE usuarios(
@@ -89,7 +95,7 @@ class DatabaseService {
       )
     ''');
 
-    // 4. Cola de Sincronización
+    // 4. Cola Sincronización
     await db.execute('''
       CREATE TABLE cola_sincronizacion(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,26 +107,72 @@ class DatabaseService {
       )
     ''');
 
-    // Insertar usuarios por defecto
+    // USUARIOS POR DEFECTO (Con Hash Bcrypt)
     await db.insert('usuarios', {
       'id': 'user-001',
       'username': 'admin',
-      'password': '123',
+      'password': _hashPassword('123'), 
       'nombre': 'Encargada Biblio',
-      'rol': 'BIBLIOTECARIA'
+      'rol': 'BIBLIOTECARIA',
+      'created_at': DateTime.now().toIso8601String()
     });
 
     await db.insert('usuarios', {
       'id': 'user-002',
       'username': 'director',
-      'password': 'dir',
+      'password': _hashPassword('dir'),
       'nombre': 'Sr. Director',
-      'rol': 'DIRECTOR'
+      'rol': 'DIRECTOR',
+      'created_at': DateTime.now().toIso8601String()
     });
   }
 
-  // --- MÉTODOS GENÉRICOS ---
+  // --- LOGIN PROFESIONAL ---
+  Future<Map<String, dynamic>?> login(String username, String password) async {
+    final db = await database;
+    
+    // 1. Buscamos SOLO por nombre de usuario
+    final res = await db.query(
+      'usuarios', 
+      where: 'username = ?', 
+      whereArgs: [username]
+    );
 
+    if (res.isEmpty) return null; // Usuario no existe
+
+    final usuario = res.first;
+    final hashGuardado = usuario['password'] as String;
+
+    // 2. Verificamos matemáticamente si la contraseña coincide con el hash
+    // BCrypt se encarga de extraer el salt del hash y comparar.
+    bool coincide = BCrypt.checkpw(password, hashGuardado);
+
+    if (coincide) {
+      return usuario;
+    } else {
+      return null; // Contraseña incorrecta
+    }
+  }
+
+  // --- GESTIÓN DE CONTRASEÑAS ---
+  Future<bool> cambiarPassword(String userId, String nuevaPassword) async {
+    try {
+      final db = await database;
+      final nuevoHash = _hashPassword(nuevaPassword);
+      
+      await db.update(
+        'usuarios',
+        {'password': nuevoHash, 'updated_at': DateTime.now().toIso8601String()},
+        where: 'id = ?',
+        whereArgs: [userId]
+      );
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // --- CRUD GENÉRICO ---
   Future<void> insertarDirecto(String tabla, Map<String, dynamic> datos) async {
     final db = await database;
     await db.insert(tabla, datos, conflictAlgorithm: ConflictAlgorithm.replace);
@@ -136,6 +188,7 @@ class DatabaseService {
     await db.delete(tabla, where: 'id = ?', whereArgs: [id]);
   }
 
+  // --- COLA DE SINCRONIZACIÓN ---
   Future<void> insertarCola(Map<String, dynamic> tarea) async {
     final db = await database;
     await db.insert('cola_sincronizacion', tarea);
@@ -151,17 +204,10 @@ class DatabaseService {
     await db.delete('cola_sincronizacion', where: 'id = ?', whereArgs: [id]);
   }
 
-  // --- MÉTODOS DE CONSULTA ---
-
-  Future<Map<String, dynamic>?> login(String user, String password) async {
-    final db = await database;
-    final res = await db.query('usuarios', where: 'username = ? AND password = ?', whereArgs: [user, password]);
-    return res.isNotEmpty ? res.first : null;
-  }
-
+  // --- CONSULTAS ESPECÍFICAS ---
   Future<List<Map<String, dynamic>>> obtenerTodosLosLibros() async {
     final db = await database;
-    return await db.query('libros', orderBy: 'id DESC');
+    return await db.query('libros', orderBy: 'created_at DESC');
   }
 
   Future<Map<String, dynamic>?> buscarLibroPorCodigo(String codigo) async {
@@ -174,6 +220,7 @@ class DatabaseService {
     final db = await database;
     final totalLibros = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM libros')) ?? 0;
     final prestamosActivos = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM prestamos WHERE activo = 1')) ?? 0;
+    
     final resultDisponibles = await db.rawQuery('SELECT SUM(copias_disponibles) as total FROM libros');
     final librosDisponibles = (resultDisponibles.first['total'] as int?) ?? 0;
 
@@ -198,5 +245,12 @@ class DatabaseService {
         [libroId]
       );
     });
+  }
+
+  // --- REPORTE HISTÓRICO ---
+  Future<List<Map<String, dynamic>>> obtenerHistorialPrestamos() async {
+    final db = await database;
+    // Traemos TODOS los préstamos ordenados por fecha más reciente
+    return await db.query('prestamos', orderBy: 'fecha_prestamo DESC');
   }
 }

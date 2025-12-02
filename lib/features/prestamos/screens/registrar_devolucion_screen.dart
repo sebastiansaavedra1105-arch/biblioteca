@@ -128,7 +128,7 @@ class _RegistrarDevolucionScreenState extends State<RegistrarDevolucionScreen> {
                                   onPressed: () {
                                     Navigator.pop(ctx);
                                     // Acción real
-                                    provider.devolverLibro(p['id'], p['libro_id']);
+                                    provider.registrarDevolucion(p['id'], p['libro_id']);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(content: Text("Libro devuelto correctamente"))
                                     );

@@ -1,3 +1,4 @@
+import 'package:biblio/features/catalogo_publico/providers/catalogo_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -6,11 +7,12 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 // Providers
 import 'features/dashboard/providers/libros_provider.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'features/director/providers/director_provider.dart'; 
 
 // Pantallas
 import 'features/catalogo_publico/screens/catalogo_screen.dart';
 import 'features/dashboard/screens/dashboard_screen.dart';
-import 'features/dashboard/screens/director_dashboard_screen.dart'; 
+import 'features/director/screens/director_dashboard_screen.dart'; 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -32,6 +34,8 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => LibrosProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => CatalogoProvider()),
+        ChangeNotifierProvider(create: (_) => DirectorProvider()),
       ],
       child: MaterialApp(
         title: 'Biblioteca Premium',
