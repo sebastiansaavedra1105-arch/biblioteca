@@ -1,25 +1,46 @@
-import 'package:biblio/features/catalogo_publico/providers/catalogo_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; 
 
 // Providers
-import 'features/dashboard/providers/libros_provider.dart';
-import 'features/auth/providers/auth_provider.dart';
-import 'features/director/providers/director_provider.dart'; 
+import 'package:biblio/features/dashboard/providers/libros_provider.dart';
+import 'package:biblio/features/auth/providers/auth_provider.dart';
+import 'package:biblio/features/director/providers/director_provider.dart';
+import 'package:biblio/features/catalogo_publico/providers/catalogo_provider.dart';
+import 'package:biblio/features/alumnos/providers/alumnos_provider.dart'; 
 
 // Pantallas
-import 'features/catalogo_publico/screens/catalogo_screen.dart';
-import 'features/dashboard/screens/dashboard_screen.dart';
-import 'features/director/screens/director_dashboard_screen.dart'; 
+import 'package:biblio/features/catalogo_publico/screens/catalogo_screen.dart';
+import 'package:biblio/features/dashboard/screens/dashboard_screen.dart';
+import 'package:biblio/features/director/screens/director_dashboard_screen.dart'; 
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // INICIALIZACIÓN DE SUPABASE
+  // --- 1. CREDENCIALES REALES POR DEFECTO (RESPALDO) ---
+  String supabaseUrl = 'https://wapntjydoxzhyixhnwbk.supabase.co';
+  String supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhcG50anlkb3h6aHlpeGhud2JrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzNDQyMTMsImV4cCI6MjA3OTkyMDIxM30.vJsRHsSJZVHiphR9oHg6JdnOoHwMqcW5de53KtdLX7U';
+
+  // --- 2. INTENTAR CARGAR DESDE .ENV ---
+  try {
+    await dotenv.load(fileName: ".env");
+    if (dotenv.env['SUPABASE_URL'] != null && 
+        dotenv.env['SUPABASE_URL']!.contains('supabase.co') && 
+        !dotenv.env['SUPABASE_URL']!.contains('tu-url')) {    
+      
+      supabaseUrl = dotenv.env['SUPABASE_URL']!;
+      supabaseKey = dotenv.env['SUPABASE_ANON_KEY']!;
+    }
+  } catch (e) {
+    debugPrint("⚠️ No se cargó .env o tiene formato incorrecto. Usando credenciales internas.");
+  }
+
+  // --- 3. INICIALIZAR ---
   await Supabase.initialize(
-    url: 'https://wapntjydoxzhyixhnwbk.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndhcG50anlkb3h6aHlpeGhud2JrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQzNDQyMTMsImV4cCI6MjA3OTkyMDIxM30.vJsRHsSJZVHiphR9oHg6JdnOoHwMqcW5de53KtdLX7U',
+    url: supabaseUrl,
+    anonKey: supabaseKey,
   );
 
   runApp(const MyApp());
@@ -32,30 +53,20 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => LibrosProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => LibrosProvider()),
         ChangeNotifierProvider(create: (_) => CatalogoProvider()),
         ChangeNotifierProvider(create: (_) => DirectorProvider()),
+        // 👇 AQUÍ REGISTRAMOS EL NUEVO PROVIDER DE ALUMNOS
+        ChangeNotifierProvider(create: (_) => AlumnosProvider()),
       ],
       child: MaterialApp(
         title: 'Biblioteca Premium',
         debugShowCheckedModeBanner: false,
-
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: const [
-          Locale('es', 'ES'), // Español
-        ],
-
-        theme: ThemeData(
-          useMaterial3: true,
-          brightness: Brightness.dark,
-          scaffoldBackgroundColor: const Color(0xFF000000),
+        theme: ThemeData.dark().copyWith(
+          scaffoldBackgroundColor: Colors.black,
           colorScheme: const ColorScheme.dark(
-            primary: Color(0xFFD4AF37),    // Dorado
+            primary: Color(0xFFD4AF37),
             surface: Color(0xFF121212),
             onPrimary: Colors.black,
           ),
@@ -74,36 +85,35 @@ class MyApp extends StatelessWidget {
             titleTextStyle: TextStyle(color: Color(0xFFD4AF37), fontSize: 24, fontWeight: FontWeight.bold),
           ),
         ),
-        // Controlador de Flujo
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('es', ''), 
+        ],
         home: const AuthWrapper(),
       ),
     );
   }
 }
 
-// --- CONTROLADOR DE FLUJO ---
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // Escuchamos al AuthProvider
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
-        
-        // 1. ¿Está Logueado?
         if (authProvider.estaAutenticado) {
-          
-          // 2. ¿Es el Director?
           if (authProvider.esDirector) {
              return const DirectorDashboardScreen();
           } else {
              return const DashboardScreen();
           }
-
         } else {
-          // 3. No logueado -> Público
-          return const CatalogoScreen(); 
+          return const CatalogoScreen();
         }
       },
     );

@@ -21,9 +21,7 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Simulación de red (opcional, se puede quitar para producción)
-      await Future.delayed(const Duration(milliseconds: 300)); 
-      
+      // Login real contra base de datos local (encriptada)
       final usuario = await _dbService.login(username, password);
 
       if (usuario != null) {
@@ -38,11 +36,16 @@ class AuthProvider extends ChangeNotifier {
         return false;
       }
     } catch (e) {
-      _errorMessage = 'Error de conexión o base de datos: $e';
+      _errorMessage = 'Error interno: $e';
       _isLoading = false;
       notifyListeners();
       return false;
     }
+  }
+
+  Future<void> logout() async {
+    _usuarioActual = null;
+    notifyListeners();
   }
 
   Future<bool> cambiarContrasena(String nuevaPassword) async {
@@ -50,13 +53,9 @@ class AuthProvider extends ChangeNotifier {
     
     final exito = await _dbService.cambiarPassword(_usuarioActual!['id'], nuevaPassword);
     if (exito) {
+      // Actualizamos el usuario en memoria si es necesario, o pedimos relogin
       notifyListeners();
     }
     return exito;
-  }
-
-  void logout() {
-    _usuarioActual = null;
-    notifyListeners();
   }
 }

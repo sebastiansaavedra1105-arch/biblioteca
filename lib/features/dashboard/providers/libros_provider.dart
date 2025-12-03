@@ -7,7 +7,7 @@ import 'package:csv/csv.dart';
 import '../../../core/database/database_service.dart';
 import '../../../core/services/sync_service.dart';
 import '../../../core/models/libro.dart';
-
+import '../../../core/models/alumno.dart';
 class LibrosProvider extends ChangeNotifier {
   final DatabaseService _dbService = DatabaseService();
   final SyncService _syncService = SyncService();
@@ -262,32 +262,30 @@ class LibrosProvider extends ChangeNotifier {
   }
 
   // --- ACCIONES DE PRÉSTAMOS (Transacciones Manuales con SyncService) ---
-
   Future<bool> registrarPrestamo({
     required Libro libro,
-    required String codigoAlumno,
-    required String nombreAlumno,
+    required Alumno alumno, 
     required DateTime fechaEntrega,
   }) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      // 1. Crear el Préstamo
+      // 1. Crear el Préstamo con datos relacionales
       final prestamoMap = {
         'libro_id': libro.id,
+        'alumno_id': alumno.id, 
         'libro_titulo': libro.titulo,
-        'codigo_alumno': codigoAlumno,
-        'nombre_alumno': nombreAlumno,
+        'nombre_alumno': alumno.nombreCompleto, 
+        'codigo_alumno': alumno.codigo,         
         'fecha_prestamo': DateTime.now().toIso8601String(),
         'fecha_entrega': fechaEntrega.toIso8601String(),
-        'activo': 1 // 1 = True
+        'activo': 1 
       };
       
-      // Insertamos el préstamo
       await _syncService.insertar('prestamos', prestamoMap);
 
-      // 2. Actualizar el Stock del Libro (Restar 1)
+      // 2. Actualizar el Stock del Libro
       final nuevoStock = libro.copiasDisponibles - 1;
       await _syncService.actualizar(
         'libros', 

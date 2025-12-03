@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/libros_provider.dart';
-import '../../../core/models/libro.dart';
-import 'agregar_libro_screen.dart';
+
+import 'package:biblio/core/models/libro.dart';
+import 'package:biblio/features/dashboard/providers/libros_provider.dart';
+import 'package:biblio/features/dashboard/features/gestion_libro/screens/agregar_libro_screen.dart';
+// Importamos AuthProvider para permisos
+import 'package:biblio/features/auth/providers/auth_provider.dart';
 
 class InventarioScreen extends StatefulWidget {
   const InventarioScreen({super.key});
@@ -19,8 +22,9 @@ class _InventarioScreenState extends State<InventarioScreen> {
   Widget build(BuildContext context) {
     final provider = context.watch<LibrosProvider>();
     final dorado = Theme.of(context).colorScheme.primary;
+    // Verificamos si es director
+    final esDirector = context.read<AuthProvider>().esDirector;
 
-    // Lógica de Filtrado Local
     final librosFiltrados = provider.libros.where((l) {
       final query = _filtro.toLowerCase();
       return l.titulo.toLowerCase().contains(query) ||
@@ -29,11 +33,10 @@ class _InventarioScreenState extends State<InventarioScreen> {
     }).toList();
 
     return Scaffold(
-      backgroundColor: Colors.black, // Fondo negro para consistencia
+      backgroundColor: Colors.black, 
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // --- BUSCADOR ---
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: TextField(
@@ -60,7 +63,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
             ),
           ),
 
-          // --- TABLA DE DATOS (FILAS) ---
           Expanded(
             child: provider.isLoading
               ? Center(child: CircularProgressIndicator(color: dorado))
@@ -79,25 +81,25 @@ class _InventarioScreenState extends State<InventarioScreen> {
                     child: SingleChildScrollView(
                       scrollDirection: Axis.vertical,
                       child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal, // Scroll lateral si la pantalla es pequeña
+                        scrollDirection: Axis.horizontal, 
                         child: DataTable(
                           columnSpacing: 20,
                           horizontalMargin: 20,
                           dataRowMinHeight: 60,
                           dataRowMaxHeight: 70,
-                          columns: const [
-                            DataColumn(label: Text("Portada")),
-                            DataColumn(label: Text("Título")),
-                            DataColumn(label: Text("Autor")),
-                            DataColumn(label: Text("Año")),
-                            DataColumn(label: Text("Categ.")),
-                            DataColumn(label: Text("Stock")),
-                            DataColumn(label: Text("Acciones")),
+                          columns: [
+                            const DataColumn(label: Text("Portada")),
+                            const DataColumn(label: Text("Título")),
+                            const DataColumn(label: Text("Autor")),
+                            const DataColumn(label: Text("Año")),
+                            const DataColumn(label: Text("Categ.")),
+                            const DataColumn(label: Text("Stock")),
+                            // Ocultamos la columna Acciones si es director
+                            if (!esDirector) const DataColumn(label: Text("Acciones")),
                           ],
                           rows: librosFiltrados.map((libro) {
                             return DataRow(
                               cells: [
-                                // 1. Portada (Miniatura)
                                 DataCell(
                                   Container(
                                     width: 40, height: 50,
@@ -109,18 +111,14 @@ class _InventarioScreenState extends State<InventarioScreen> {
                                     ),
                                   ),
                                 ),
-                                // 2. Título (Con ancho máximo para no romper la tabla)
                                 DataCell(
                                   SizedBox(
                                     width: 200,
                                     child: Text(libro.titulo, overflow: TextOverflow.ellipsis, maxLines: 2)
                                   ),
                                 ),
-                                // 3. Autor
                                 DataCell(Text(libro.autor)),
-                                // 4. Año
                                 DataCell(Text(libro.anio.toString())),
-                                // 5. Categoría
                                 DataCell(
                                   Container(
                                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -128,7 +126,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
                                     child: Text(libro.categoria, style: const TextStyle(fontSize: 12)),
                                   )
                                 ),
-                                // 6. Stock
                                 DataCell(
                                   Text(
                                     "${libro.copiasDisponibles} / ${libro.copias}",
@@ -138,25 +135,26 @@ class _InventarioScreenState extends State<InventarioScreen> {
                                     ),
                                   )
                                 ),
-                                // 7. Acciones
-                                DataCell(
-                                  Row(
-                                    children: [
-                                      IconButton(
-                                        icon: const Icon(Icons.edit, color: Colors.blueGrey, size: 20),
-                                        tooltip: "Editar",
-                                        onPressed: () {
-                                          Navigator.push(context, MaterialPageRoute(builder: (_) => AgregarLibroScreen(libroParaEditar: libro)));
-                                        },
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
-                                        tooltip: "Borrar",
-                                        onPressed: () => _confirmarBorrado(context, provider, libro),
-                                      ),
-                                    ],
-                                  )
-                                ),
+                                // Solo mostramos los botones si NO es director
+                                if (!esDirector)
+                                  DataCell(
+                                    Row(
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.edit, color: Colors.blueGrey, size: 20),
+                                          tooltip: "Editar",
+                                          onPressed: () {
+                                            Navigator.push(context, MaterialPageRoute(builder: (_) => AgregarLibroScreen(libroParaEditar: libro)));
+                                          },
+                                        ),
+                                        IconButton(
+                                          icon: const Icon(Icons.delete, color: Colors.redAccent, size: 20),
+                                          tooltip: "Borrar",
+                                          onPressed: () => _confirmarBorrado(context, provider, libro),
+                                        ),
+                                      ],
+                                    )
+                                  ),
                               ],
                             );
                           }).toList(),
@@ -170,7 +168,6 @@ class _InventarioScreenState extends State<InventarioScreen> {
     );
   }
 
-  // Helper para imagen pequeña en la tabla
   Widget _construirImagenMini(Libro l) {
     if (l.fotoBytes != null && l.fotoBytes!.isNotEmpty) {
       return Image.memory(l.fotoBytes!, fit: BoxFit.cover);

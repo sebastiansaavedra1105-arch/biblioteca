@@ -97,12 +97,22 @@ class _ReportesDirectorScreenState extends State<ReportesDirectorScreen> {
                     icon: const Icon(Icons.download, size: 28),
                     label: const Text("DESCARGAR REPORTE COMPLETO (CSV)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     onPressed: () async {
+                      // Llamamos a la función
                       final path = await provider.descargarReporteCsv();
+                      
                       if (context.mounted) {
                         if (path != null) {
+                          // Solo mostramos éxito si realmente se guardó (path no es null)
                           _mostrarExito(context, path);
                         } else {
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Error al generar reporte")));
+                          // Si es null, fue cancelación o error.
+                          // Solo mostramos error si el provider tiene un mensaje de error guardado.
+                          if (provider.error != null) {
+                             ScaffoldMessenger.of(context).showSnackBar(
+                               SnackBar(content: Text("❌ ${provider.error}"), backgroundColor: Colors.red)
+                             );
+                          }
+                          // Si no hay error, significa que el usuario dio "Cancelar", no hacemos nada.
                         }
                       }
                     },

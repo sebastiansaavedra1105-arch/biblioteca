@@ -7,18 +7,22 @@ import '../database/database_service.dart';
 
 class SyncService {
   final DatabaseService _localDb = DatabaseService();
-  final SupabaseClient _supabase = Supabase.instance.client;
+  
+  // Usamos getter para obtener la instancia inicializada en main
+  SupabaseClient get _supabase => Supabase.instance.client;
+  
   final _uuid = const Uuid();
+
+  // UUID "Nulo" válido para comparaciones en PostgreSQL
+  static const String _nilUuid = '00000000-0000-0000-0000-000000000000';
 
   // --- 1. INSERTAR (CREAR) ---
   Future<void> insertar(String tabla, Map<String, dynamic> datos) async {
-    // A. Generar ID local si no existe
     final datosConId = Map<String, dynamic>.from(datos);
     if (!datosConId.containsKey('id') || datosConId['id'] == null) {
       datosConId['id'] = _uuid.v4();
     }
 
-    // B. Guardar en Local (Guardamos foto_bytes para que funcione OFFLINE)
     try {
       await _localDb.insertarDirecto(tabla, datosConId);
     } catch (e) {
@@ -26,22 +30,18 @@ class SyncService {
       return;
     }
 
-    // C. Lógica de Nube
     if (await _hayInternet()) {
       await _procesarYSubir(tabla, datosConId, 'INSERT');
     } else {
       debugPrint("📴 Sin internet -> Encolando INSERT...");
-      // Encolamos CON los bytes para poder subirlos cuando vuelva el internet
       await _encolar('INSERT', tabla, datosConId);
     }
   }
 
   // --- 2. ACTUALIZAR (EDITAR) ---
   Future<void> actualizar(String tabla, Map<String, dynamic> datos, String id) async {
-    // A. Local
     await _localDb.actualizarDirecto(tabla, datos, id);
 
-    // B. Nube
     if (await _hayInternet()) {
       await _procesarYSubir(tabla, datos, 'UPDATE', id: id);
     } else {
@@ -55,7 +55,6 @@ class SyncService {
 
     if (await _hayInternet()) {
       try {
-        // Opcional: Podrías borrar también la imagen del Storage aquí si quisieras limpiar
         await _supabase.from(tabla).delete().eq('id', id);
         debugPrint("☁️ Borrado en Supabase: $id");
       } catch (e) {
@@ -72,32 +71,32 @@ class SyncService {
       final datosParaNube = Map<String, dynamic>.from(datos);
       final registroId = id ?? datosParaNube['id'];
 
-      // PASO 1: ¿Hay imagen nueva para subir? (Solo si es tabla libros y tiene bytes)
+      // SUBIDA DE FOTO (Solo para libros)
       if (tabla == 'libros' && datosParaNube['foto_bytes'] != null) {
-        
-        final Uint8List bytes = datosParaNube['foto_bytes']; // Sqflite devuelve Uint8List
-        final String fileName = 'portada_$registroId.jpg'; // Nombre único
+        final Uint8List bytes = datosParaNube['foto_bytes']; 
+        final String fileName = 'portada_$registroId.jpg'; 
         
         debugPrint("📸 Subiendo imagen a Storage: $fileName...");
 
-        // Subir binario directamente a Supabase Storage
-        await _supabase.storage.from('portadas').uploadBinary(
-          fileName,
-          bytes,
-          fileOptions: const FileOptions(upsert: true), // Si existe, la reemplaza
-        );
-
-        // Obtener URL Pública
-        final String publicUrl = _supabase.storage.from('portadas').getPublicUrl(fileName);
-        
-        // Asignamos la URL y borramos los bytes (Nube quiere URL, no bytes)
-        datosParaNube['foto_url'] = publicUrl;
+        try {
+          // Intentamos subir
+          await _supabase.storage.from('portadas').uploadBinary(
+            fileName,
+            bytes,
+            fileOptions: const FileOptions(upsert: true),
+          );
+          
+          final String publicUrl = _supabase.storage.from('portadas').getPublicUrl(fileName);
+          datosParaNube['foto_url'] = publicUrl;
+        } catch (e) {
+          // Si falla por permisos (RLS), lo ignoramos para no bloquear el resto de datos
+          debugPrint("⚠️ Advertencia Storage: $e");
+        }
       }
 
-      // Limpieza final: Nunca enviar 'foto_bytes' a la BD de Supabase
+      // Limpieza: Nunca enviar bytes a la tabla SQL
       datosParaNube.remove('foto_bytes');
 
-      // PASO 2: Ejecutar la acción en BD Nube
       if (accion == 'INSERT') {
         await _supabase.from(tabla).insert(datosParaNube);
       } else if (accion == 'UPDATE') {
@@ -108,12 +107,11 @@ class SyncService {
 
     } catch (e) {
       debugPrint("❌ Error subiendo a nube: $e -> Encolando...");
-      // Si falla (ej: se cortó internet a mitad de subida), encolamos
       await _encolar(accion, tabla, datos, id: id);
     }
   }
 
-  // --- DESCARGA (Para el Director/Otros PC) ---
+  // --- DESCARGA ---
   Future<int> descargarDatosNube() async {
     if (!await _hayInternet()) return 0;
 
@@ -123,9 +121,6 @@ class SyncService {
       // 1. Libros
       final librosNube = await _supabase.from('libros').select();
       for (var map in librosNube) {
-        // TRUCO: Si viene URL de Supabase pero no tengo bytes locales, 
-        // podríamos descargar la imagen y guardarla en bytes para tenerla offline.
-        // Por ahora, guardamos los datos tal cual.
         await _localDb.insertarDirecto('libros', map);
       }
 
@@ -139,6 +134,25 @@ class SyncService {
         await _localDb.insertarDirecto('prestamos', datoLimpio);
       }
 
+      // 👇 3. ALUMNOS (AGREGA ESTO)
+      try {
+        final alumnosNube = await _supabase.from('alumnos').select();
+        for (var map in alumnosNube) {
+          await _localDb.insertarDirecto('alumnos', map);
+        }
+        debugPrint("✅ Alumnos descargados: ${alumnosNube.length}");
+      } catch (e) {
+        debugPrint("⚠️ Error descargando alumnos: $e");
+      }
+      
+      // 4. Usuarios
+      try {
+         final usuariosNube = await _supabase.from('usuarios').select();
+         for (var map in usuariosNube) {
+            await _localDb.insertarDirecto('usuarios', map);
+         }
+      } catch(e) { /*...*/ }
+
       return librosNube.length + prestamosNube.length;
     } catch (e) {
       debugPrint("❌ Error descargando: $e");
@@ -148,17 +162,16 @@ class SyncService {
 
   // --- UTILIDADES ---
   Future<bool> _hayInternet() async {
-    final connectivityResult = await Connectivity().checkConnectivity();
-    return !connectivityResult.contains(ConnectivityResult.none);
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      return !connectivityResult.contains(ConnectivityResult.none);
+    } catch(e) {
+      return false;
+    }
   }
 
   Future<void> _encolar(String accion, String tabla, Map<String, dynamic> datos, {String? id}) async {
-    // Aquí serializamos los bytes a Base64 si existen, para guardarlos en el TEXT de la cola
-    // (SQLite maneja esto, pero jsonEncode no soporta Uint8List nativamente, hay que convertirlo)
-    
     final datosCola = Map<String, dynamic>.from(datos);
-    
-    // Si hay bytes, los convertimos a lista de enteros para que JSON no falle
     if (datosCola['foto_bytes'] is Uint8List) {
        datosCola['foto_bytes'] = (datosCola['foto_bytes'] as Uint8List).toList();
     }
@@ -187,7 +200,6 @@ class SyncService {
         final tabla = tarea['tabla'];
         Map<String, dynamic> datos = jsonDecode(tarea['datos']);
         
-        // RECONSTRUIR BYTES: JSON los trae como List<dynamic>, pasarlos a Uint8List
         if (datos.containsKey('foto_bytes') && datos['foto_bytes'] != null) {
           List<dynamic> listaInt = datos['foto_bytes'];
           datos['foto_bytes'] = Uint8List.fromList(listaInt.cast<int>());
@@ -196,13 +208,52 @@ class SyncService {
         final id = tarea['registro_id'];
         final accion = tarea['accion'];
 
-        // Reutilizamos la lógica inteligente
         await _procesarYSubir(tabla, datos, accion, id: id);
-
         await _localDb.borrarDeCola(tarea['id']);
       } catch (e) {
         debugPrint("❌ Error procesando cola item ${tarea['id']}: $e");
       }
     }
+  }
+
+  // --- MÉTODOS DE LIMPIEZA MASIVA (CORREGIDOS) ---
+  
+  Future<void> nukePrestamos() async {
+    // Local
+    await _localDb.database.then((db) => db.delete('prestamos'));
+    
+    // Nube
+    if (await _hayInternet()) {
+      try { 
+        // 🔥 CORRECCIÓN: Usamos un UUID válido pero inexistente en lugar de "0"
+        await _supabase.from('prestamos').delete().neq('id', _nilUuid); 
+        debugPrint("☁️ Nube: Préstamos borrados.");
+      } catch (e) { 
+        debugPrint("❌ Error borrando prestamos nube: $e"); 
+      }
+    }
+  }
+
+  Future<void> nukeLibros() async {
+    // Primero borramos préstamos dependientes
+    await nukePrestamos(); 
+
+    // Local
+    await _localDb.database.then((db) => db.delete('libros'));
+
+    // Nube
+    if (await _hayInternet()) {
+      try { 
+        // 🔥 CORRECCIÓN: Usamos un UUID válido
+        await _supabase.from('libros').delete().neq('id', _nilUuid); 
+        debugPrint("☁️ Nube: Libros borrados.");
+      } catch (e) { 
+        debugPrint("❌ Error borrando libros nube: $e"); 
+      }
+    }
+  }
+
+  Future<void> nukeTodo() async {
+    await nukeLibros(); 
   }
 }

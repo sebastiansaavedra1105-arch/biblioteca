@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+
 import '../../../core/models/libro.dart';
+import '../../../core/models/alumno.dart';
 import '../../dashboard/providers/libros_provider.dart';
+import '../../alumnos/providers/alumnos_provider.dart';
+// Eliminado import de alumno_dialog porque quitamos el botón de crear aquí
 
 class NuevoPrestamoScreen extends StatefulWidget {
   const NuevoPrestamoScreen({super.key});
@@ -11,291 +16,266 @@ class NuevoPrestamoScreen extends StatefulWidget {
 }
 
 class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
-  final _formKey = GlobalKey<FormState>();
-  
-  // Controladores
-  final _codLibroCtrl = TextEditingController();
-  final _docSolicitanteCtrl = TextEditingController(); // Antes Codigo Alumno
-  final _nomSolicitanteCtrl = TextEditingController(); // Antes Nombre Alumno
-  DateTime _fecha = DateTime.now().add(const Duration(days: 7));
+  final _libroSearchCtrl = TextEditingController();
+  final _alumnoSearchCtrl = TextEditingController();
 
-  // FocusNode para regresar el cursor al libro automáticamente tras guardar
-  final FocusNode _libroFocus = FocusNode();
+  Libro? _libroSeleccionado;
+  Alumno? _alumnoSeleccionado;
+  DateTime _fechaEntrega = DateTime.now().add(const Duration(days: 3));
 
-  // Estado Local
-  Libro? _libro;
-  String? _errorLibro;
-  bool _buscando = false;
+  List<Alumno> _sugerenciasAlumnos = [];
 
   @override
   void initState() {
     super.initState();
-    // Ponemos el foco en el libro apenas entra a la pantalla
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _libroFocus.requestFocus();
+      context.read<AlumnosProvider>().cargarAlumnos();
     });
   }
 
-  @override
-  void dispose() {
-    _libroFocus.dispose();
-    _codLibroCtrl.dispose();
-    _docSolicitanteCtrl.dispose();
-    _nomSolicitanteCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _buscarLibro(String codigo) async {
+  void _buscarLibro() async {
+    final codigo = _libroSearchCtrl.text.trim();
     if (codigo.isEmpty) return;
-    
-    setState(() { _buscando = true; _errorLibro = null; _libro = null; });
 
-    final encontrado = await context.read<LibrosProvider>().buscarLibroPorCodigo(codigo);
+    final provider = context.read<LibrosProvider>();
+    try {
+      final libro = provider.libros.firstWhere(
+        (l) => l.codigoBarras == codigo,
+        orElse: () => Libro(id: 'temp', codigoBarras: '', titulo: '', autor: '', isbn: '', anio: 0, editorial: '', categoria: '', copias: 0, copiasDisponibles: 0, estado: '', observacion: '')
+      );
 
-    if (!mounted) return;
-    setState(() {
-      _buscando = false;
-      if (encontrado == null) {
-        _errorLibro = '❌ Libro no encontrado';
-        _codLibroCtrl.clear(); // Limpiamos para que intente de nuevo
-        _libroFocus.requestFocus(); // Mantenemos el foco ahí
-      } else if (encontrado.copiasDisponibles < 1) {
-        _errorLibro = '⚠️ Sin stock disponible';
-        _libro = encontrado; // Mostramos el libro aunque no haya stock para que vea cuál es
+      if (libro.id != 'temp') {
+        setState(() => _libroSeleccionado = libro);
+        _libroSearchCtrl.clear();
       } else {
-        _libro = encontrado;
-        _errorLibro = null;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Libro no encontrado")));
       }
-    });
+    } catch (e) {
+      // Ignorar
+    }
   }
 
-  Future<void> _procesarPrestamo() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_libro == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Escanea un libro primero')));
-      _libroFocus.requestFocus();
+  void _filtrarAlumnos(String query) {
+    if (query.isEmpty) {
+      setState(() => _sugerenciasAlumnos = []);
       return;
     }
-    if (_libro!.copiasDisponibles < 1) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Este libro no tiene stock para prestar')));
+    final todos = context.read<AlumnosProvider>().alumnos;
+    setState(() {
+      _sugerenciasAlumnos = todos.where((a) => 
+        a.nombreCompleto.toLowerCase().contains(query.toLowerCase()) || 
+        a.codigo.toLowerCase().contains(query.toLowerCase())
+      ).take(5).toList(); 
+    });
+  }
+
+  void _seleccionarAlumno(Alumno alumno) {
+    setState(() {
+      _alumnoSeleccionado = alumno;
+      _sugerenciasAlumnos = [];
+      _alumnoSearchCtrl.clear();
+    });
+  }
+
+  void _registrarPrestamo() async {
+    if (_libroSeleccionado == null || _alumnoSeleccionado == null) return;
+
+    if (_alumnoSeleccionado!.estaVetado) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⛔ EL ALUMNO ESTÁ VETADO. No se puede prestar."), backgroundColor: Colors.red)
+      );
+      return;
+    }
+
+    if (_libroSeleccionado!.copiasDisponibles <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ No hay copias disponibles de este libro."), backgroundColor: Colors.orange)
+      );
       return;
     }
 
     final exito = await context.read<LibrosProvider>().registrarPrestamo(
-      libro: _libro!,
-      codigoAlumno: _docSolicitanteCtrl.text, // Puede ser DNI o Código Aula
-      nombreAlumno: _nomSolicitanteCtrl.text, // Puede ser "1er Grado A"
-      fechaEntrega: _fecha,
+      libro: _libroSeleccionado!,
+      alumno: _alumnoSeleccionado!,
+      fechaEntrega: _fechaEntrega,
     );
 
-    if (mounted && exito) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('✅ Préstamo registrado: ${_libro!.titulo}'), backgroundColor: Colors.green)
-      );
-      
-      // --- FLUJO MASIVO ---
-      // 1. Limpiamos SOLO el libro, mantenemos al solicitante (Profesor/Aula)
-      _codLibroCtrl.clear();
+    if (exito && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Préstamo Registrado"), backgroundColor: Colors.green));
       setState(() {
-        _libro = null;
-        _errorLibro = null;
+        _libroSeleccionado = null;
+        _alumnoSeleccionado = null;
+        _libroSearchCtrl.clear();
       });
-      
-      // 2. Regresamos el cursor al campo de libro para escanear el siguiente al toque
-      _libroFocus.requestFocus();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final dorado = Theme.of(context).colorScheme.primary;
-    final loading = context.select<LibrosProvider, bool>((p) => p.isLoading);
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Form(
-        key: _formKey,
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- SECCIÓN 1: DATOS DEL SOLICITANTE (Ahora persistentes) ---
-            const Text("DATOS DEL SOLICITANTE / AULA", style: TextStyle(color: Colors.grey, fontSize: 12, letterSpacing: 1.5)),
-            const SizedBox(height: 10),
-            
-            Row(
-              children: [
-                Expanded(
-                  flex: 1,
-                  child: _Input(
-                    label: 'DNI / Cod.', 
-                    ctrl: _docSolicitanteCtrl, 
-                    icon: Icons.badge
-                  )
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  flex: 2,
-                  child: _Input(
-                    label: 'Nombre / Grado y Sección', 
-                    ctrl: _nomSolicitanteCtrl, 
-                    icon: Icons.class_
-                  )
-                ),
-              ],
-            ),
-            
-            const SizedBox(height: 20),
-            const Divider(color: Colors.white24),
-            const SizedBox(height: 20),
-
-            // --- SECCIÓN 2: ESCANEO DE LIBRO ---
-            Text('ESCANEAR LIBRO', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: dorado)),
-            const SizedBox(height: 10),
-            
-            TextFormField(
-              controller: _codLibroCtrl,
-              focusNode: _libroFocus, // Foco automático aquí
-              autofocus: true,        // Apenas abre la pantalla, escribe aquí
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-              decoration: _deco('Dispara al código aquí...', Icons.qr_code_scanner, dorado),
-              
-              // ESTO ES LO QUE PIDES: Al dar Enter (pistola), busca inmediatamente
-              textInputAction: TextInputAction.done,
-              onFieldSubmitted: (valor) => _buscarLibro(valor),
-            ),
-            
-            // Mensajes de estado
-            if (_buscando)
-              const Padding(padding: EdgeInsets.only(top: 20), child: Center(child: CircularProgressIndicator())),
-
-            if (_errorLibro != null) 
-              Padding(
-                padding: const EdgeInsets.only(top: 15),
-                child: Container(
-                  padding: const EdgeInsets.all(10),
-                  color: Colors.red.withOpacity(0.2),
-                  child: Row(children: [const Icon(Icons.error, color: Colors.red), const SizedBox(width: 10), Expanded(child: Text(_errorLibro!, style: const TextStyle(color: Colors.red)))]),
-                )
-              ),
-
-            // TARJETA DEL LIBRO ENCONTRADO
-            if (_libro != null && !_buscando)
-              Container(
-                margin: const EdgeInsets.symmetric(vertical: 20),
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(
-                  color: _libro!.copiasDisponibles > 0 ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1), 
-                  border: Border.all(color: _libro!.copiasDisponibles > 0 ? Colors.green : Colors.red),
-                  borderRadius: BorderRadius.circular(10)
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _libro!.fotoBytes != null 
-                      ? Image.memory(_libro!.fotoBytes!, width: 60, height: 90, fit: BoxFit.cover)
-                      : const Icon(Icons.book, size: 60, color: Colors.grey),
-                    const SizedBox(width: 15),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(_libro!.titulo, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-                        const SizedBox(height: 5),
-                        Text("Autor: ${_libro!.autor}", style: TextStyle(color: Colors.grey[400])),
-                        const SizedBox(height: 5),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(4)),
-                          child: Text(
-                            "DISPONIBLES: ${_libro!.copiasDisponibles}", 
-                            style: TextStyle(color: _libro!.copiasDisponibles > 0 ? dorado : Colors.red, fontWeight: FontWeight.bold)
-                          ),
-                        ),
-                      ]),
+            // --- 1. SECCIÓN LIBRO ---
+            const _HeaderSeccion("1. Libro a Prestar", Icons.book),
+            if (_libroSeleccionado == null)
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _libroSearchCtrl,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: _inputDeco("Escanear Código de Barras", Icons.qr_code_scanner),
+                      onSubmitted: (_) => _buscarLibro(),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 10),
+                  IconButton(
+                    icon: Icon(Icons.search, color: dorado),
+                    onPressed: _buscarLibro,
+                    style: IconButton.styleFrom(backgroundColor: Colors.grey[900]),
+                  )
+                ],
+              )
+            else
+              _TarjetaSeleccion(
+                titulo: _libroSeleccionado!.titulo,
+                subtitulo: "Stock: ${_libroSeleccionado!.copiasDisponibles}",
+                icon: Icons.book,
+                color: _libroSeleccionado!.copiasDisponibles > 0 ? Colors.green : Colors.red,
+                onDelete: () => setState(() => _libroSeleccionado = null),
               ),
-
-            const SizedBox(height: 10),
-            
-            // SELECTOR DE FECHA EN ESPAÑOL
-            InkWell(
-              onTap: () async {
-                final d = await showDatePicker(
-                  context: context, 
-                  initialDate: _fecha, 
-                  firstDate: DateTime.now(), 
-                  lastDate: DateTime(2030),
-                  locale: const Locale('es', 'ES'), // <--- FUERZA ESPAÑOL
-                  builder: (c, child) => Theme(data: Theme.of(c).copyWith(colorScheme: ColorScheme.dark(primary: dorado, onPrimary: Colors.black)), child: child!)
-                );
-                if (d != null) setState(() => _fecha = d);
-              },
-              child: Container(
-                padding: const EdgeInsets.all(15),
-                decoration: BoxDecoration(color: Colors.white10, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.white24)),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text("Fecha de Devolución", style: TextStyle(color: Colors.grey[400])),
-                    Row(children: [
-                      Icon(Icons.calendar_today, color: dorado, size: 18),
-                      const SizedBox(width: 10),
-                      Text(
-                        // Formato simple manual o usar intl si quieres "Lunes 10..."
-                        "${_fecha.day}/${_fecha.month}/${_fecha.year}", 
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)
-                      )
-                    ])
-                  ],
-                ),
-              ),
-            ),
 
             const SizedBox(height: 30),
 
-            ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: dorado, foregroundColor: Colors.black, minimumSize: const Size.fromHeight(60)
-              ),
-              onPressed: (_libro != null && _libro!.copiasDisponibles > 0 && !loading) ? _procesarPrestamo : null,
-              icon: loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.check_circle, size: 28),
-              label: Text(loading ? "PROCESANDO..." : "CONFIRMAR PRÉSTAMO", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
-            ),
+            // --- 2. SECCIÓN ALUMNO ---
+            // Eliminamos el botón de "Nuevo Alumno" de aquí
+            const _HeaderSeccion("2. Alumno Solicitante", Icons.person),
             
-            const SizedBox(height: 10),
-            const Center(child: Text("Al confirmar, el campo de libro se limpiará para el siguiente.", style: TextStyle(color: Colors.grey, fontSize: 10))),
+            if (_alumnoSeleccionado == null) ...[
+              TextField(
+                controller: _alumnoSearchCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: _inputDeco("Buscar por Nombre o Código...", Icons.search),
+                onChanged: _filtrarAlumnos,
+              ),
+              if (_sugerenciasAlumnos.isNotEmpty)
+                Container(
+                  color: Colors.grey[900],
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _sugerenciasAlumnos.length,
+                    itemBuilder: (ctx, i) {
+                      final a = _sugerenciasAlumnos[i];
+                      return ListTile(
+                        leading: Icon(a.estaVetado ? Icons.block : Icons.person, color: a.estaVetado ? Colors.red : Colors.white),
+                        title: Text(a.nombreCompleto, style: const TextStyle(color: Colors.white)),
+                        subtitle: Text(a.codigo, style: const TextStyle(color: Colors.grey)),
+                        onTap: () => _seleccionarAlumno(a),
+                      );
+                    },
+                  ),
+                ),
+            ] else
+              _TarjetaSeleccion(
+                titulo: _alumnoSeleccionado!.nombreCompleto,
+                subtitulo: _alumnoSeleccionado!.estaVetado 
+                    ? "VETADO HASTA: ${DateFormat('dd/MM/yyyy').format(_alumnoSeleccionado!.vetadoHasta!)}"
+                    : "Código: ${_alumnoSeleccionado!.codigo} | Strikes: ${_alumnoSeleccionado!.strikes}",
+                icon: Icons.person,
+                color: _alumnoSeleccionado!.estaVetado ? Colors.red : dorado,
+                onDelete: () => setState(() => _alumnoSeleccionado = null),
+              ),
+
+            const SizedBox(height: 30),
+
+            // --- 3. FECHA ---
+            const _HeaderSeccion("3. Fecha de Entrega", Icons.calendar_today),
+            InkWell(
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: context, 
+                  initialDate: _fechaEntrega, 
+                  firstDate: DateTime.now(), 
+                  lastDate: DateTime.now().add(const Duration(days: 30))
+                );
+                if (picked != null) setState(() => _fechaEntrega = picked);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(15),
+                decoration: BoxDecoration(border: Border.all(color: Colors.grey), borderRadius: BorderRadius.circular(8)),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(DateFormat('dd/MM/yyyy').format(_fechaEntrega), style: const TextStyle(color: Colors.white, fontSize: 16)),
+                    const Icon(Icons.edit, color: Colors.grey),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 40),
+
+            SizedBox(
+              height: 55,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: dorado),
+                onPressed: _libroSeleccionado != null && _alumnoSeleccionado != null 
+                    ? _registrarPrestamo 
+                    : null, 
+                child: const Text("REGISTRAR PRÉSTAMO", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
-}
 
-class _Input extends StatelessWidget {
-  final String label; final TextEditingController ctrl; final IconData icon;
-  const _Input({required this.label, required this.ctrl, required this.icon});
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: ctrl, style: const TextStyle(color: Colors.white),
-      validator: (v) => v!.isEmpty ? 'Requerido' : null,
-      decoration: InputDecoration(
-        labelText: label, prefixIcon: Icon(icon, color: Colors.grey, size: 18),
-        filled: true, fillColor: Colors.white10,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Theme.of(context).colorScheme.primary)),
-      ),
+  InputDecoration _inputDeco(String hint, IconData icon) {
+    return InputDecoration(
+      hintText: hint,
+      hintStyle: const TextStyle(color: Colors.grey),
+      prefixIcon: Icon(icon, color: Colors.grey),
+      filled: true, fillColor: const Color(0xFF1E1E1E),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
     );
   }
 }
 
-InputDecoration _deco(String label, IconData icon, Color color) {
-  return InputDecoration(
-    hintText: label, prefixIcon: Icon(icon, color: color),
-    filled: true, fillColor: Colors.white10,
-    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-    focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: color)),
-  );
+class _HeaderSeccion extends StatelessWidget {
+  final String titulo; final IconData icon;
+  const _HeaderSeccion(this.titulo, this.icon);
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(children: [Icon(icon, color: Colors.white70, size: 20), const SizedBox(width: 10), Text(titulo, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold))]),
+    );
+  }
+}
+
+class _TarjetaSeleccion extends StatelessWidget {
+  final String titulo; final String subtitulo; final IconData icon; final Color color; final VoidCallback onDelete;
+  const _TarjetaSeleccion({required this.titulo, required this.subtitulo, required this.icon, required this.color, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: color.withOpacity(0.2),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10), side: BorderSide(color: color)),
+      child: ListTile(
+        leading: Icon(icon, color: color, size: 30),
+        title: Text(titulo, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        subtitle: Text(subtitulo, style: const TextStyle(color: Colors.white70)),
+        trailing: IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: onDelete),
+      ),
+    );
+  }
 }

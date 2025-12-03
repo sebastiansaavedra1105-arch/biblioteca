@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:bcrypt/bcrypt.dart'; 
-import 'package:path_provider/path_provider.dart'; // Para guardar el archivo
+import 'package:file_picker/file_picker.dart';
+
 import '../../../core/database/database_service.dart';
 import '../../../core/services/sync_service.dart';
 
@@ -9,10 +10,8 @@ class DirectorProvider extends ChangeNotifier {
   final DatabaseService _dbService = DatabaseService();
   final SyncService _syncService = SyncService();
 
-  // Usuarios
   List<Map<String, dynamic>> _usuarios = [];
   
-  // Reportes
   List<Map<String, dynamic>> _historialPrestamos = [];
   int _prestamosSemana = 0;
   int _prestamosMes = 0;
@@ -21,7 +20,6 @@ class DirectorProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
 
-  // Getters
   List<Map<String, dynamic>> get usuarios => _usuarios;
   List<Map<String, dynamic>> get historialPrestamos => _historialPrestamos;
   int get prestamosSemana => _prestamosSemana;
@@ -33,42 +31,81 @@ class DirectorProvider extends ChangeNotifier {
 
   DirectorProvider() {
     cargarUsuarios();
-    cargarReportes(); // Cargar datos al iniciar
+    cargarReportes(); 
   }
 
-  // --- GESTIÓN DE USUARIOS (Código anterior) ---
+  // --- GESTIÓN DE USUARIOS ---
+
   Future<void> cargarUsuarios() async {
-    // ... (Misma lógica que ya tenías, resumida aquí para no repetir todo)
+    _isLoading = true;
+    notifyListeners();
     try {
       final db = await _dbService.database;
       final data = await db.query('usuarios', orderBy: 'username ASC');
       _usuarios = List<Map<String, dynamic>>.from(data);
+    } catch (e) {
+      _error = "Error cargando usuarios: $e";
+    } finally {
+      _isLoading = false;
       notifyListeners();
-    } catch (e) { /*...*/ }
+    }
   }
 
-  // ... (Tus funciones crearUsuario, editarUsuario, eliminarUsuario se mantienen igual)
   Future<bool> crearUsuario(String u, String p, String n, String r) async {
-    // Copia tu función crearUsuario aquí...
-    final hash = BCrypt.hashpw(p, BCrypt.gensalt());
-    await _syncService.insertar('usuarios', {'username': u, 'password': hash, 'nombre': n, 'rol': r, 'created_at': DateTime.now().toIso8601String()});
-    await cargarUsuarios();
-    return true;
-  }
-  Future<bool> eliminarUsuario(String id) async {
-    await _syncService.eliminar('usuarios', id);
-    await cargarUsuarios();
-    return true;
-  }
-  Future<bool> editarUsuario(String id, String n, String r, String? p) async {
-    Map<String, dynamic> d = {'nombre': n, 'rol': r};
-    if(p != null && p.isNotEmpty) d['password'] = BCrypt.hashpw(p, BCrypt.gensalt());
-    await _syncService.actualizar('usuarios', d, id);
-    await cargarUsuarios();
-    return true;
+    try {
+      _isLoading = true;
+      notifyListeners();
+
+      final hash = BCrypt.hashpw(p, BCrypt.gensalt());
+      await _syncService.insertar('usuarios', {
+        'username': u, 
+        'password': hash, 
+        'nombre': n, 
+        'rol': r, 
+        'created_at': DateTime.now().toIso8601String()
+      });
+      
+      await cargarUsuarios();
+      return true;
+    } catch (e) {
+      _error = "Error al crear: $e";
+      notifyListeners();
+      return false;
+    }
   }
 
-  // --- 🔥 NUEVA LÓGICA DE REPORTES ---
+  Future<bool> eliminarUsuario(String id) async {
+    try {
+      await _syncService.eliminar('usuarios', id);
+      await cargarUsuarios();
+      return true;
+    } catch (e) {
+      _error = "Error al eliminar: $e";
+      return false;
+    }
+  }
+
+  Future<bool> editarUsuario(String id, String n, String r, String? p) async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+      
+      Map<String, dynamic> d = {'nombre': n, 'rol': r};
+      if(p != null && p.isNotEmpty) {
+        d['password'] = BCrypt.hashpw(p, BCrypt.gensalt());
+      }
+      
+      await _syncService.actualizar('usuarios', d, id);
+      await cargarUsuarios();
+      return true;
+    } catch (e) {
+      _error = "Error al editar: $e";
+      notifyListeners();
+      return false;
+    }
+  }
+
+  // --- REPORTES ---
 
   Future<void> cargarReportes() async {
     _isLoading = true;
@@ -79,7 +116,7 @@ class DirectorProvider extends ChangeNotifier {
       _historialPrestamos = todos;
 
       final ahora = DateTime.now();
-      final inicioSemana = ahora.subtract(Duration(days: ahora.weekday - 1)); // Lunes
+      final inicioSemana = ahora.subtract(Duration(days: ahora.weekday - 1));
       final inicioMes = DateTime(ahora.year, ahora.month, 1);
 
       _prestamosSemana = 0;
@@ -90,12 +127,10 @@ class DirectorProvider extends ChangeNotifier {
         final fechaPrestamo = DateTime.parse(p['fecha_prestamo']);
         final esDevuelto = p['activo'] == 0;
 
-        // Cálculo Semanal
         if (fechaPrestamo.isAfter(inicioSemana)) {
           _prestamosSemana++;
         }
 
-        // Cálculo Mensual
         if (fechaPrestamo.isAfter(inicioMes)) {
           _prestamosMes++;
           if (esDevuelto) _devolucionesMes++;
@@ -110,31 +145,95 @@ class DirectorProvider extends ChangeNotifier {
     }
   }
 
-  // --- DESCARGAR CSV ---
   Future<String?> descargarReporteCsv() async {
     try {
-      // 1. Generar contenido CSV
       StringBuffer csvBuffer = StringBuffer();
-      csvBuffer.writeln("ID,LIBRO,ALUMNO,FECHA_PRESTAMO,ESTADO"); // Cabecera
+      csvBuffer.writeln("ID,LIBRO,ALUMNO,FECHA_PRESTAMO,ESTADO"); 
 
       for (var p in _historialPrestamos) {
         final estado = (p['activo'] == 1) ? "ACTIVO" : "DEVUELTO";
-        csvBuffer.writeln("${p['id']},${p['libro_titulo']},${p['nombre_alumno']},${p['fecha_prestamo']},$estado");
+        final titulo = (p['libro_titulo'] ?? '').toString().replaceAll(',', '');
+        final alumno = (p['nombre_alumno'] ?? '').toString().replaceAll(',', '');
+        
+        csvBuffer.writeln("${p['id']},$titulo,$alumno,${p['fecha_prestamo']},$estado");
       }
 
-      // 2. Obtener ruta de documentos
-      final directory = await getApplicationDocumentsDirectory();
       final fecha = "${DateTime.now().year}-${DateTime.now().month}-${DateTime.now().day}";
-      final path = "${directory.path}/reporte_biblioteca_$fecha.csv";
       
-      // 3. Guardar archivo
-      final file = File(path);
-      await file.writeAsString(csvBuffer.toString());
+      final String? path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Guardar Reporte de Biblioteca',
+        fileName: 'reporte_biblioteca_$fecha.csv',
+        allowedExtensions: ['csv'],
+        type: FileType.custom,
+        lockParentWindow: true,
+      );
 
-      return path; // Retorna la ruta donde se guardó
+      if (path != null) {
+        String finalPath = path;
+        if (!finalPath.toLowerCase().endsWith('.csv')) {
+          finalPath = '$finalPath.csv';
+        }
+
+        await File(finalPath).writeAsString(csvBuffer.toString());
+        return finalPath; 
+      } else {
+        return null;
+      }
+
     } catch (e) {
       _error = "Error exportando: $e";
+      notifyListeners();
       return null;
+    }
+  }
+
+  // --- ZONA DE MANTENIMIENTO ---
+  
+  Future<bool> limpiarPrestamos() async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+      await _syncService.nukePrestamos();
+      await cargarReportes(); 
+      return true;
+    } catch (e) {
+      _error = "Error: $e";
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> limpiarLibros() async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+      await _syncService.nukeLibros();
+      await cargarReportes();
+      return true;
+    } catch (e) {
+      _error = "Error: $e";
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> limpiarTodo() async {
+    try {
+      _isLoading = true;
+      notifyListeners();
+      await _syncService.nukeTodo();
+      await cargarReportes();
+      return true;
+    } catch (e) {
+      _error = "Error: $e";
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 }

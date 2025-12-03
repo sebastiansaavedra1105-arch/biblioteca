@@ -1,14 +1,31 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// Imports locales (nuestros nuevos widgets)
-import '../providers/catalogo_provider.dart';
-import '../widgets/catalogo_header.dart';
-import '../widgets/libro_publico_card.dart';
-import '../../auth/screens/login_screen.dart';
+// Imports absolutos
+import 'package:biblio/features/catalogo_publico/providers/catalogo_provider.dart';
+import 'package:biblio/features/catalogo_publico/widgets/catalogo_header.dart';
+import 'package:biblio/features/catalogo_publico/widgets/libro_publico_card.dart';
+import 'package:biblio/features/auth/screens/login_screen.dart';
 
-class CatalogoScreen extends StatelessWidget {
+// 🔥 CAMBIO 1: Ahora es StatefulWidget para tener "Ciclo de Vida"
+class CatalogoScreen extends StatefulWidget {
   const CatalogoScreen({super.key});
+
+  @override
+  State<CatalogoScreen> createState() => _CatalogoScreenState();
+}
+
+class _CatalogoScreenState extends State<CatalogoScreen> {
+  
+  // 🔥 CAMBIO 2: Esto se ejecuta CADA VEZ que esta pantalla se construye (al abrir la app o volver del login)
+  @override
+  void initState() {
+    super.initState();
+    // Usamos addPostFrameCallback para asegurar que el widget esté listo antes de pedir datos
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<CatalogoProvider>().cargarCatalogo();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,7 +50,18 @@ class CatalogoScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.login, color: Colors.white),
             tooltip: 'Acceso Administrativo',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LoginScreen())),
+            onPressed: () {
+              // Navegamos al login. El .then se ejecuta cuando regresas.
+              Navigator.push(
+                context, 
+                MaterialPageRoute(builder: (_) => const LoginScreen())
+              ).then((_) {
+                // 🔥 CAMBIO 3: Doble seguridad. Si vuelven con "Atrás", recargamos.
+                if (mounted) {
+                  context.read<CatalogoProvider>().cargarCatalogo();
+                }
+              });
+            },
           )
         ],
       ),
@@ -53,34 +81,51 @@ class CatalogoScreen extends StatelessWidget {
                   return Center(child: CircularProgressIndicator(color: colorDorado));
                 }
 
-                // Estado: Vacío
+                // Estado: Vacío (con opción de recargar deslizando)
                 if (provider.libros.isEmpty) {
-                  return const Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.search_off, size: 60, color: Colors.grey),
-                        SizedBox(height: 10),
-                        Text("No se encontraron libros", style: TextStyle(color: Colors.grey)),
+                  return RefreshIndicator(
+                    onRefresh: () async => await provider.cargarCatalogo(),
+                    color: colorDorado,
+                    backgroundColor: Colors.grey[900],
+                    child: ListView(
+                      children: const [
+                        SizedBox(height: 100),
+                        Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.search_off, size: 60, color: Colors.grey),
+                              SizedBox(height: 10),
+                              Text("No se encontraron libros", style: TextStyle(color: Colors.grey)),
+                              SizedBox(height: 5),
+                              Text("Desliza para recargar", style: TextStyle(color: Colors.grey, fontSize: 10)),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   );
                 }
 
-                // Estado: Lista de Libros
-                return GridView.builder(
-                  padding: const EdgeInsets.all(16),
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 180, 
-                    childAspectRatio: 0.55, 
-                    crossAxisSpacing: 15,
-                    mainAxisSpacing: 15,
+                // Estado: Lista de Libros (Grid)
+                return RefreshIndicator(
+                  onRefresh: () async => await provider.cargarCatalogo(),
+                  color: colorDorado,
+                  backgroundColor: Colors.grey[900],
+                  child: GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    physics: const AlwaysScrollableScrollPhysics(), // Permite scroll/refresh aunque haya pocos items
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 180, 
+                      childAspectRatio: 0.55, 
+                      crossAxisSpacing: 15,
+                      mainAxisSpacing: 15,
+                    ),
+                    itemCount: provider.libros.length,
+                    itemBuilder: (context, index) {
+                      return LibroPublicoCard(libro: provider.libros[index]);
+                    },
                   ),
-                  itemCount: provider.libros.length,
-                  itemBuilder: (context, index) {
-                    // Usamos nuestra tarjeta refactorizada
-                    return LibroPublicoCard(libro: provider.libros[index]);
-                  },
                 );
               },
             ),

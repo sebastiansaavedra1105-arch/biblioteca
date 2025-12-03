@@ -1,17 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// Imports de Widgets y Pantallas del Dashboard
-import '../widgets/admin_navbar.dart';
-import 'resumen_stats_screen.dart';
-import 'agregar_libro_screen.dart';
-import 'inventario_screen.dart'; 
+// Imports de Widgets y Pantallas Locales
+import 'package:biblio/features/dashboard/widgets/admin_navbar.dart';
+import 'package:biblio/features/dashboard/screens/resumen_stats_screen.dart';
+import 'package:biblio/features/dashboard/screens/inventario_screen.dart';
+import 'package:biblio/features/dashboard/features/gestion_libro/screens/agregar_libro_screen.dart';
+import 'package:biblio/features/alumnos/screens/gestion_alumnos_screen.dart';
 
 // Imports de otros módulos
-import '../providers/libros_provider.dart';
-import '../../prestamos/screens/nuevo_prestamo_screen.dart';
-import '../../prestamos/screens/registrar_devolucion_screen.dart';
-import '../../auth/providers/auth_provider.dart';
+import 'package:biblio/features/dashboard/providers/libros_provider.dart';
+import 'package:biblio/features/prestamos/screens/nuevo_prestamo_screen.dart';
+import 'package:biblio/features/prestamos/screens/registrar_devolucion_screen.dart';
+import 'package:biblio/features/auth/providers/auth_provider.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -23,11 +24,11 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _selectedIndex = 0;
 
-  // Títulos dinámicos según la pestaña seleccionada
   final List<String> _titulos = [
     'PANEL ADMINISTRATIVO',
     'REGISTRAR PRÉSTAMO', 
     'DEVOLUCIONES PENDIENTES',
+    'GESTIÓN DE ALUMNOS',
     'AGREGAR NUEVO LIBRO',
     'INVENTARIO COMPLETO'
   ];
@@ -35,18 +36,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // Carga inicial al abrir la pantalla
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<LibrosProvider>().cargarEstadisticas();
     });
   }
 
-  // 🔥 LÓGICA DE NAVEGACIÓN MEJORADA
   void _onNavTap(int index) {
     setState(() => _selectedIndex = index);
     
-    // TRUCO: Si vas a "Resumen" (0) o "Inventario" (4), forzamos la recarga
-    // para que los datos importados o cambiados se reflejen al instante.
     if (index == 0 || index == 4) {
       context.read<LibrosProvider>().cargarEstadisticas();
       context.read<LibrosProvider>().cargarLibros();
@@ -59,20 +56,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Lista de pantallas (Orden debe coincidir con el Navbar)
     final List<Widget> vistas = [
-      const ResumenStatsScreen(),        // Índice 0
-      const NuevoPrestamoScreen(),       // Índice 1
-      const RegistrarDevolucionScreen(), // Índice 2
-      const AgregarLibroScreen(),        // Índice 3
-      const InventarioScreen(),          // Índice 4
+      const ResumenStatsScreen(),        // 0
+      const NuevoPrestamoScreen(),       // 1
+      const RegistrarDevolucionScreen(), // 2
+      const GestionAlumnosScreen(),      // 3
+      const AgregarLibroScreen(),        // 4
+      const InventarioScreen(),          // 5
     ];
 
     return Scaffold(
       appBar: AppBar(
         title: Text(_titulos[_selectedIndex]),
         actions: [
-          // Botón de refresco manual (Carga Todo)
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: "Actualizar datos",
@@ -80,7 +76,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                context.read<LibrosProvider>().cargarTodo();
             },
           ),
-          // Menú de usuario / Cerrar sesión
           PopupMenuButton<String>(
             onSelected: (v) => v == 'logout' ? _cerrarSesion() : null,
             itemBuilder: (context) => [
@@ -98,16 +93,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      
-      // IndexedStack mantiene vivo el estado de los formularios (no borra lo que escribes al cambiar pestaña)
       body: IndexedStack(
         index: _selectedIndex,
         children: vistas,
       ),
-      
       bottomNavigationBar: AdminNavbar(
         currentIndex: _selectedIndex,
-        onTap: _onNavTap, // Usamos nuestra función mejorada
+        onTap: _onNavTap,
       ),
     );
   }

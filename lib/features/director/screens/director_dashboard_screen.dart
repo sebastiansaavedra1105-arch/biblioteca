@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// Imports
-import '../../auth/providers/auth_provider.dart';
-import '../../dashboard/providers/libros_provider.dart';
-import '../../dashboard/screens/inventario_screen.dart';    
-import 'gestion_usuarios_screen.dart';
-import 'reportes_director_screen.dart';
+// Imports absolutos
+import 'package:biblio/features/auth/providers/auth_provider.dart';
+import 'package:biblio/features/dashboard/providers/libros_provider.dart';
+import 'package:biblio/features/dashboard/screens/inventario_screen.dart';
+import 'package:biblio/features/dashboard/screens/resumen_stats_screen.dart';
+
+// Pantallas del módulo Director
+import 'package:biblio/features/director/screens/gestion_usuarios_screen.dart';
+import 'package:biblio/features/director/screens/reportes_director_screen.dart';
+import 'package:biblio/features/director/screens/mantenimiento_screen.dart';
+import 'package:biblio/features/alumnos/screens/gestion_alumnos_screen.dart';
 
 class DirectorDashboardScreen extends StatefulWidget {
   const DirectorDashboardScreen({super.key});
@@ -17,18 +22,19 @@ class DirectorDashboardScreen extends StatefulWidget {
 
 class _DirectorDashboardScreenState extends State<DirectorDashboardScreen> {
   int _selectedIndex = 0;
-  bool _isSyncing = false; // Estado local para el botón de carga
+  bool _isSyncing = false; 
 
   final List<Widget> _vistas = [
-    const ReportesDirectorScreen(), // 0
-    const GestionUsuariosScreen(),  // 1
-    const InventarioScreen(),       // 2
+    const ResumenStatsScreen(),     // 0: Resumen General
+    const ReportesDirectorScreen(), // 1: Reportes CSV
+    const GestionAlumnosScreen(),   // 2: ALUMNOS (NUEVO)
+    const GestionUsuariosScreen(),  // 3: Usuarios (Staff)
+    const InventarioScreen(),       // 4: Inventario
+    const MantenimientoScreen(),    // 5: Mantenimiento
   ];
 
   Future<void> _descargarDeNube() async {
     setState(() => _isSyncing = true);
-    
-    // Llamamos a la lógica del Provider que ya existe
     await context.read<LibrosProvider>().sincronizarDesdeNube();
     
     if (mounted) {
@@ -73,29 +79,48 @@ class _DirectorDashboardScreenState extends State<DirectorDashboardScreen> {
                 Text("DIRECTOR", style: TextStyle(color: Colors.grey[400], fontWeight: FontWeight.bold, letterSpacing: 1.2)),
                 const SizedBox(height: 40),
                 
-                // Botones de Navegación
                 _MenuButton(
-                  icon: Icons.bar_chart, 
-                  label: "Reportes", 
+                  icon: Icons.dashboard, 
+                  label: "Resumen", 
                   isActive: _selectedIndex == 0,
                   onTap: () => setState(() => _selectedIndex = 0),
                 ),
                 _MenuButton(
-                  icon: Icons.group, 
-                  label: "Usuarios", 
+                  icon: Icons.analytics, 
+                  label: "Reportes", 
                   isActive: _selectedIndex == 1,
                   onTap: () => setState(() => _selectedIndex = 1),
                 ),
+                
+                // BOTÓN DE ALUMNOS
                 _MenuButton(
-                  icon: Icons.list_alt, 
-                  label: "Inventario", 
+                  icon: Icons.school, 
+                  label: "Alumnos", 
                   isActive: _selectedIndex == 2,
                   onTap: () => setState(() => _selectedIndex = 2),
                 ),
 
-                const Spacer(), // Empuja lo siguiente hacia abajo
+                _MenuButton(
+                  icon: Icons.group, 
+                  label: "Usuarios (Staff)", 
+                  isActive: _selectedIndex == 3,
+                  onTap: () => setState(() => _selectedIndex = 3),
+                ),
+                _MenuButton(
+                  icon: Icons.list_alt, 
+                  label: "Inventario", 
+                  isActive: _selectedIndex == 4,
+                  onTap: () => setState(() => _selectedIndex = 4),
+                ),
+                _MenuButton(
+                  icon: Icons.build_circle, 
+                  label: "Mantenimiento", 
+                  isActive: _selectedIndex == 5,
+                  onTap: () => setState(() => _selectedIndex = 5),
+                ),
 
-                // --- BOTÓN DE SINCRONIZACIÓN NUBE ---
+                const Spacer(), 
+
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: Container(
