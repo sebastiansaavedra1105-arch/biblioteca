@@ -263,25 +263,26 @@ class LibrosProvider extends ChangeNotifier {
 
   // --- ACCIONES DE PRÉSTAMOS (Transacciones Manuales con SyncService) ---
   Future<bool> registrarPrestamo({
-    required Libro libro,
-    required Alumno alumno, 
-    required DateTime fechaEntrega,
-  }) async {
-    _isLoading = true;
-    notifyListeners();
+  required Libro libro,
+  required Alumno alumno, 
+  required DateTime fechaEntrega,
+}) async {
+  _isLoading = true;
+  notifyListeners();
 
-    try {
-      // 1. Crear el Préstamo con datos relacionales
-      final prestamoMap = {
-        'libro_id': libro.id,
-        'alumno_id': alumno.id, 
-        'libro_titulo': libro.titulo,
-        'nombre_alumno': alumno.nombreCompleto, 
-        'codigo_alumno': alumno.codigo,         
-        'fecha_prestamo': DateTime.now().toIso8601String(),
-        'fecha_entrega': fechaEntrega.toIso8601String(),
-        'activo': 1 
-      };
+  try {
+    // 1. Crear el Préstamo
+    final prestamoMap = {
+      // 'id': null, // DEJA QUE SYNC SERVICE LO GENERE O GENÉRALO TÚ CON UUID SI QUIERES
+      'libro_id': libro.id,
+      'alumno_id': alumno.id, 
+      'libro_titulo': libro.titulo,
+      'nombre_alumno': alumno.nombreCompleto, 
+      // 'codigo_alumno': alumno.codigo, <--- BORRAR ESTA LÍNEA, CAUSA EL ERROR
+      'fecha_prestamo': DateTime.now().toIso8601String(),
+      'fecha_entrega': fechaEntrega.toIso8601String(),
+      'activo': 1 // SQLite usa 1 para true
+    };
       
       await _syncService.insertar('prestamos', prestamoMap);
 

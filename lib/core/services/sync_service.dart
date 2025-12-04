@@ -71,6 +71,10 @@ class SyncService {
       final datosParaNube = Map<String, dynamic>.from(datos);
       final registroId = id ?? datosParaNube['id'];
 
+      if (tabla == 'prestamos' && datosParaNube['activo'] is int) {
+      datosParaNube['activo'] = (datosParaNube['activo'] == 1);
+    }
+
       // SUBIDA DE FOTO (Solo para libros)
       if (tabla == 'libros' && datosParaNube['foto_bytes'] != null) {
         final Uint8List bytes = datosParaNube['foto_bytes']; 
