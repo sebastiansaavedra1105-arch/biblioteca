@@ -34,6 +34,26 @@ class DirectorProvider extends ChangeNotifier {
     cargarReportes(); 
   }
 
+  Future<void> forzarSincronizacionManual() async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      // 1. Llamamos al servicio para bajar datos frescos
+      await _syncService.forzarDescargaNube();
+      
+      // 2. Recargamos los datos en memoria para ver los cambios reflejados
+      await cargarUsuarios();
+      await cargarReportes();
+      
+    } catch (e) {
+      _error = "Error al sincronizar: $e";
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   // --- GESTIÓN DE USUARIOS ---
 
   Future<void> cargarUsuarios() async {

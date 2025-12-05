@@ -370,4 +370,35 @@ class LibrosProvider extends ChangeNotifier {
     }
   }
 
+  // --- BÚSQUEDA OPTIMIZADA (SQL) ---
+  Future<void> buscarLibros(String query) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final db = await _dbService.database;
+      List<Map<String, dynamic>> result;
+
+      if (query.isEmpty) {
+        // Si no hay búsqueda, traemos los últimos 50 (Paginación implícita para velocidad)
+        result = await db.query('libros', limit: 50, orderBy: 'created_at DESC');
+      } else {
+        // Búsqueda real en base de datos
+        result = await db.rawQuery('''
+          SELECT * FROM libros 
+          WHERE titulo LIKE ? 
+          OR autor LIKE ? 
+          OR codigo_barras LIKE ?
+        ''', ['%$query%', '%$query%', '%$query%']);
+      }
+
+      _libros = result.map((m) => Libro.fromMap(m)).toList();
+      
+    } catch (e) {
+      _error = "Error en búsqueda: $e";
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
 }

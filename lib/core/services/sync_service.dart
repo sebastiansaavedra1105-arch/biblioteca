@@ -4,6 +4,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../database/database_service.dart';
+import 'package:sqflite/sqflite.dart';
 
 class SyncService {
   final DatabaseService _localDb = DatabaseService();
@@ -26,14 +27,14 @@ class SyncService {
     try {
       await _localDb.insertarDirecto(tabla, datosConId);
     } catch (e) {
-      debugPrint("⚠️ Error insertando local: $e");
+      debugPrint("Error insertando local: $e");
       return;
     }
 
     if (await _hayInternet()) {
       await _procesarYSubir(tabla, datosConId, 'INSERT');
     } else {
-      debugPrint("📴 Sin internet -> Encolando INSERT...");
+      debugPrint("Sin internet -> Encolando INSERT...");
       await _encolar('INSERT', tabla, datosConId);
     }
   }
@@ -65,25 +66,24 @@ class SyncService {
     }
   }
 
-  // --- LÓGICA CORE: SUBIDA DE IMAGEN Y DATOS ---
   Future<void> _procesarYSubir(String tabla, Map<String, dynamic> datos, String accion, {String? id}) async {
     try {
       final datosParaNube = Map<String, dynamic>.from(datos);
       final registroId = id ?? datosParaNube['id'];
 
+      // 1. Corrección: Convertir int a bool para Supabase (Solo préstamos)
       if (tabla == 'prestamos' && datosParaNube['activo'] is int) {
-      datosParaNube['activo'] = (datosParaNube['activo'] == 1);
-    }
+        datosParaNube['activo'] = (datosParaNube['activo'] == 1);
+      }
 
-      // SUBIDA DE FOTO (Solo para libros)
+      // 2. Subida de Foto (Solo libros)
       if (tabla == 'libros' && datosParaNube['foto_bytes'] != null) {
         final Uint8List bytes = datosParaNube['foto_bytes']; 
         final String fileName = 'portada_$registroId.jpg'; 
         
-        debugPrint("📸 Subiendo imagen a Storage: $fileName...");
+        debugPrint("Subiendo imagen a Storage: $fileName...");
 
         try {
-          // Intentamos subir
           await _supabase.storage.from('portadas').uploadBinary(
             fileName,
             bytes,
@@ -93,25 +93,31 @@ class SyncService {
           final String publicUrl = _supabase.storage.from('portadas').getPublicUrl(fileName);
           datosParaNube['foto_url'] = publicUrl;
         } catch (e) {
-          // Si falla por permisos (RLS), lo ignoramos para no bloquear el resto de datos
           debugPrint("⚠️ Advertencia Storage: $e");
         }
       }
 
-      // Limpieza: Nunca enviar bytes a la tabla SQL
+      // Limpieza: Quitamos los bytes para no enviarlos a la base de datos SQL
       datosParaNube.remove('foto_bytes');
 
       if (accion == 'INSERT') {
         await _supabase.from(tabla).insert(datosParaNube);
+        debugPrint("INSERT exitoso en Nube ($tabla)");
+
       } else if (accion == 'UPDATE') {
         await _supabase.from(tabla).update(datosParaNube).eq('id', registroId);
+        debugPrint("UPDATE exitoso en Nube ($tabla)");
+
+      } else if (accion == 'DELETE') {
+        await _supabase.from(tabla).delete().eq('id', registroId);
+        debugPrint("DELETE en Nube ($tabla): $registroId");
       }
-      
-      debugPrint("✅ Sincronización exitosa ($accion) en Nube.");
 
     } catch (e) {
-      debugPrint("❌ Error subiendo a nube: $e -> Encolando...");
-      await _encolar(accion, tabla, datos, id: id);
+      debugPrint("❌ Error subiendo a nube ($accion): $e");
+      // IMPORTANTE: Lanzamos el error para que la función 'borrar' o 'insertar'
+      // sepa que falló y guarde los datos en la cola local (SQLite).
+      rethrow; 
     }
   }
 
@@ -120,7 +126,7 @@ class SyncService {
     if (!await _hayInternet()) return 0;
 
     try {
-      debugPrint("⬇️ Iniciando descarga inteligente...");
+      debugPrint("⬇Iniciando descarga...");
       
       // 1. Libros
       final librosNube = await _supabase.from('libros').select();
@@ -138,13 +144,13 @@ class SyncService {
         await _localDb.insertarDirecto('prestamos', datoLimpio);
       }
 
-      // 👇 3. ALUMNOS (AGREGA ESTO)
+      // 3. ALUMNOS (AGREGA ESTO)
       try {
         final alumnosNube = await _supabase.from('alumnos').select();
         for (var map in alumnosNube) {
           await _localDb.insertarDirecto('alumnos', map);
         }
-        debugPrint("✅ Alumnos descargados: ${alumnosNube.length}");
+        debugPrint("Alumnos descargados: ${alumnosNube.length}");
       } catch (e) {
         debugPrint("⚠️ Error descargando alumnos: $e");
       }
@@ -188,7 +194,7 @@ class SyncService {
       'fecha': DateTime.now().toIso8601String()
     };
     await _localDb.insertarCola(tarea);
-    debugPrint("📥 Tarea encolada: $accion");
+    debugPrint("Tarea encolada: $accion");
   }
   
   Future<void> sincronizarPendientes() async {
@@ -197,7 +203,7 @@ class SyncService {
     final pendientes = await _localDb.obtenerColaPendiente();
     if (pendientes.isEmpty) return;
 
-    debugPrint("🔄 Procesando cola (${pendientes.length})...");
+    debugPrint("Procesando cola (${pendientes.length})...");
 
     for (var tarea in pendientes) {
       try {
@@ -229,7 +235,6 @@ class SyncService {
     // Nube
     if (await _hayInternet()) {
       try { 
-        // 🔥 CORRECCIÓN: Usamos un UUID válido pero inexistente en lugar de "0"
         await _supabase.from('prestamos').delete().neq('id', _nilUuid); 
         debugPrint("☁️ Nube: Préstamos borrados.");
       } catch (e) { 
@@ -248,9 +253,8 @@ class SyncService {
     // Nube
     if (await _hayInternet()) {
       try { 
-        // 🔥 CORRECCIÓN: Usamos un UUID válido
         await _supabase.from('libros').delete().neq('id', _nilUuid); 
-        debugPrint("☁️ Nube: Libros borrados.");
+        debugPrint("Nube: Libros borrados.");
       } catch (e) { 
         debugPrint("❌ Error borrando libros nube: $e"); 
       }
@@ -260,4 +264,102 @@ class SyncService {
   Future<void> nukeTodo() async {
     await nukeLibros(); 
   }
-}
+
+// --- AUTO-SYNC INTELIGENTE (Para la Pantalla de Carga) ---
+  Future<void> sincronizacionInicial() async {
+    // 1. Verificar internet
+    if (!await _hayInternet()) {
+      debugPrint("Modo Offline: Saltando descarga inicial.");
+      return; 
+    }
+
+    try {
+      debugPrint("Comprobando estado de la Nube...");
+
+      // Tablas a sincronizar en orden de dependencia
+      final tablas = ['usuarios', 'alumnos', 'libros', 'prestamos'];
+
+      for (String tabla in tablas) {
+        // Verificar cuántos datos tenemos localmente
+        final db = await _localDb.database;
+        final countLocal = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM $tabla')) ?? 0;
+
+        if (countLocal == 0) {
+          debugPrint("Descargando tabla '$tabla' completa...");
+          final datosNube = await _supabase.from(tabla).select();
+          
+          // Insertamos masivamente en transacción para velocidad
+          await db.transaction((txn) async {
+            for (var dato in datosNube) {
+              await txn.insert(tabla, dato, conflictAlgorithm: ConflictAlgorithm.replace);
+            }
+          });
+        }
+      }
+      debugPrint("Sincronización Inicial Terminada.");
+    } catch (e) {
+      debugPrint("❌ Error en Auto-Sync: $e");
+    }
+  }
+
+  // --- FORZAR DESCARGA (Botón Manual del Director) ---
+  Future<void> forzarDescargaNube() async {
+    // 1. Si no hay internet, no hacemos nada
+    if (!await _hayInternet()) {
+      debugPrint("Sin internet: No se puede forzar descarga.");
+      return;
+    }
+
+    try {
+      debugPrint("FORZANDO ACTUALIZACIÓN DESDE LA NUBE...");
+      
+      // Tablas clave
+      final tablas = ['usuarios', 'alumnos', 'libros', 'prestamos'];
+
+      for (String tabla in tablas) {
+        // Descargamos Todo de la nube
+        final datosNube = await _supabase.from(tabla).select();
+        
+        final db = await _localDb.database;
+        await db.transaction((txn) async {
+          for (var dato in datosNube) {
+            await txn.insert(tabla, dato, conflictAlgorithm: ConflictAlgorithm.replace);
+          }
+        });
+      }
+      debugPrint("Actualización forzada completada con éxito.");
+    } catch (e) {
+      debugPrint("❌ Error en forzar descarga: $e");
+    }
+  }
+
+  // --- MÉTODO DE BORRADO (CRUD) ---
+  Future<void> borrar(String tabla, String id) async {
+    try {
+      // 1. Borrar Localmente (SQLite) para que desaparezca de la vista YA
+      final db = await _localDb.database;
+      await db.delete(tabla, where: 'id = ?', whereArgs: [id]);
+      debugPrint("Borrado local en $tabla: $id");
+
+      // 2. Sincronización con la Nube
+      if (await _hayInternet()) {
+        // Si hay internet, mandamos la orden DELETE a Supabase directo
+        // Pasamos un mapa vacío {} porque DELETE no necesita datos, solo el ID
+        await _procesarYSubir(tabla, {}, 'DELETE', id: id);
+      } else {
+        // Si NO hay internet, guardamos la intención en la cola
+        debugPrint("Offline: Guardando tarea DELETE en cola");
+        await _localDb.insertarCola({
+          'tabla': tabla,
+          'datos': jsonEncode({}), // Datos vacíos
+          'accion': 'DELETE', // Importante: Marcamos la acción como DELETE
+          'registro_id': id,
+          'fecha_creacion': DateTime.now().toIso8601String()
+        });
+      }
+    } catch (e) {
+      debugPrint("❌ Error al intentar borrar: $e");
+      rethrow; // Lanzamos el error para que la UI sepa que falló
+    }
+  }
+} 
