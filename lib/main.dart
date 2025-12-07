@@ -10,7 +10,11 @@ import 'features/auth/providers/auth_provider.dart';
 import 'features/director/providers/director_provider.dart';
 import 'features/catalogo_publico/providers/catalogo_provider.dart';
 import 'features/alumnos/providers/alumnos_provider.dart';
-import 'features/auth/providers/splash_provider.dart'; // <--- IMPORTANTE
+import 'features/auth/providers/splash_provider.dart';
+import 'core/theme/theme_provider.dart'; // <--- IMPORTANTE: Provider del tema
+
+// Configuración de Estilos
+import 'core/theme/app_theme.dart'; // <--- IMPORTANTE: Tus estilos
 
 // Pantalla
 import 'features/auth/screens/splash_screen.dart';
@@ -45,8 +49,8 @@ class AppState extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => DirectorProvider()),
         ChangeNotifierProvider(create: (_) => CatalogoProvider()),
         ChangeNotifierProvider(create: (_) => AlumnosProvider()),
-        // REGISTRAMOS EL NUEVO PROVIDER
-        ChangeNotifierProvider(create: (_) => SplashProvider()), 
+        ChangeNotifierProvider(create: (_) => SplashProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()), 
       ],
       child: const MainApp(),
     );
@@ -58,26 +62,25 @@ class MainApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Escuchamos el estado del tema
+    final themeProvider = Provider.of<ThemeProvider>(context);
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Biblioteca Jiménez',
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xFFD4AF37),
-          secondary: Color(0xFF1E1E1E),
-          surface: Color(0xFF121212),
-          onPrimary: Colors.black,
-        ),
-      ),
+      title: 'Biblioteca Jiménez Pimentel',
+      
+      // --- CONFIGURACIÓN DE TEMAS ---
+      theme: AppTheme.lightTheme,       // Tu tema claro (Crema/Dorado)
+      darkTheme: AppTheme.darkTheme,    // Tu tema oscuro (Negro/Dorado)
+      themeMode: themeProvider.themeMode, // Controlado por el switch
+      
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: const [Locale('es', '')],
-      home: const SplashScreen(), // Limpio y directo
+      home: const SplashScreen(),
     );
   }
 }

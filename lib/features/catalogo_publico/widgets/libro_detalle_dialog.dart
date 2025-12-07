@@ -8,56 +8,87 @@ class LibroDetalleDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return Dialog(
-      backgroundColor: const Color(0xFF252525),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: colorScheme.surface, 
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: colorScheme.primary.withOpacity(0.3), width: 1), 
+      ),
       child: Container(
-        width: 500, // Ancho máximo para escritorio
-        padding: const EdgeInsets.all(20),
+        width: 600, 
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- ENCABEZADO (FOTO + DATOS) ---
+            // --- ENCABEZADO (FOTO + TÍTULO) ---
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // FOTO
+                // FOTO CON SOMBRA
                 Container(
-                  width: 100, height: 150,
-                  decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(8)),
+                  width: 120, height: 180,
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 10,
+                        offset: const Offset(3, 5),
+                      )
+                    ],
+                  ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: _construirImagen(libro),
                   ),
                 ),
-                const SizedBox(width: 20),
-                // DATOS
+                const SizedBox(width: 24),
+                
+                // DATOS PRINCIPALES
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(libro.titulo, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 5),
-                      Text("Por: ${libro.autor}", style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 16)),
-                      const SizedBox(height: 10),
-                      _datoFila("Categoría:", libro.categoria),
-                      _datoFila("Editorial:", libro.editorial),
-                      _datoFila("Año:", libro.anio.toString()),
-                      _datoFila("ISBN:", libro.isbn),
-                      const SizedBox(height: 10),
-                      // Badge Disponibilidad
+                      // Título
+                      Text(
+                        libro.titulo,
+                        style: textTheme.displaySmall?.copyWith(
+                          fontSize: 24, 
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      
+                      // Autor
+                      Text(
+                        libro.autor,
+                        style: textTheme.headlineMedium?.copyWith(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w400,
+                          color: colorScheme.primary, 
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Categoría (Chip)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         decoration: BoxDecoration(
-                          color: libro.copiasDisponibles > 0 ? Colors.green.withOpacity(0.2) : Colors.red.withOpacity(0.2),
-                          borderRadius: BorderRadius.circular(5),
-                          border: Border.all(color: libro.copiasDisponibles > 0 ? Colors.green : Colors.red)
+                          color: colorScheme.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: colorScheme.primary.withOpacity(0.5)),
                         ),
                         child: Text(
-                          libro.copiasDisponibles > 0 ? "DISPONIBLE (${libro.copiasDisponibles})" : "AGOTADO",
-                          style: TextStyle(
-                            color: libro.copiasDisponibles > 0 ? Colors.greenAccent : Colors.redAccent, 
-                            fontWeight: FontWeight.bold
+                          libro.categoria,
+                          style: textTheme.labelLarge?.copyWith(
+                            color: colorScheme.primary,
                           ),
                         ),
                       ),
@@ -66,30 +97,67 @@ class LibroDetalleDialog extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            const Divider(color: Colors.grey),
             
-            // --- OBSERVACIONES ---
-            const Align(alignment: Alignment.centerLeft, child: Text("Observaciones / Detalles:", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold))),
-            const SizedBox(height: 5),
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 16),
+
+            // --- DETALLES TÉCNICOS (GRID) ---
+            Wrap(
+              spacing: 30,
+              runSpacing: 15,
+              children: [
+                _datoCampo(context, "ISBN", libro.isbn),
+                _datoCampo(context, "Año", libro.anio.toString()),
+                _datoCampo(context, "Editorial", libro.editorial),
+                _datoCampo(context, "Ubicación", libro.codigoBarras), 
+              ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // --- ESTADO Y DISPONIBILIDAD ---
             Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)),
-              child: Text(
-                libro.observacion.isEmpty ? "Sin observaciones." : libro.observacion, 
-                style: const TextStyle(color: Colors.white70)
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                // CORRECCIÓN: 'background' deprecated -> Usamos scaffoldBackgroundColor para contraste
+                color: theme.scaffoldBackgroundColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _EstadoBadge(
+                    label: "Copias: ${libro.copiasDisponibles} / ${libro.copias}",
+                    icon: Icons.copy,
+                    color: colorScheme.onSurface,
+                  ),
+                  _EstadoBadge(
+                    label: libro.copiasDisponibles > 0 ? "DISPONIBLE" : "AGOTADO",
+                    icon: libro.copiasDisponibles > 0 ? Icons.check_circle : Icons.cancel,
+                    color: libro.copiasDisponibles > 0 ? Colors.green : colorScheme.error,
+                    isBold: true,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 20),
+
+            const SizedBox(height: 24),
             
             // --- BOTÓN CERRAR ---
             Align(
               alignment: Alignment.centerRight, 
-              child: TextButton(
+              child: ElevatedButton.icon(
                 onPressed: () => Navigator.pop(context), 
-                child: const Text("Cerrar")
-              )
+                icon: const Icon(Icons.close),
+                label: const Text("Cerrar"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: colorScheme.surface,
+                  foregroundColor: colorScheme.onSurface,
+                  elevation: 0,
+                  side: BorderSide(color: Colors.grey.withOpacity(0.3)),
+                ),
+              ),
             ),
           ],
         ),
@@ -97,15 +165,26 @@ class LibroDetalleDialog extends StatelessWidget {
     );
   }
 
-  Widget _datoFila(String label, String valor) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        children: [
-          Text("$label ", style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
-          Expanded(child: Text(valor, style: const TextStyle(color: Colors.white70), overflow: TextOverflow.ellipsis)),
-        ],
-      ),
+  Widget _datoCampo(BuildContext context, String label, String valor) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: Colors.grey,
+            letterSpacing: 1.0,
+          ),
+        ),
+        Text(
+          valor,
+          style: theme.textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
     );
   }
 
@@ -125,8 +204,40 @@ class LibroDetalleDialog extends StatelessWidget {
 
   Widget _placeholder() {
     return Container(
-      color: Colors.grey[900],
-      child: const Center(child: Icon(Icons.book, size: 30, color: Colors.grey)),
+      color: Colors.grey[300],
+      child: const Center(child: Icon(Icons.book, size: 40, color: Colors.grey)),
+    );
+  }
+}
+
+class _EstadoBadge extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+  final bool isBold;
+
+  const _EstadoBadge({
+    required this.label,
+    required this.icon,
+    required this.color,
+    this.isBold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 8),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14,
+          ),
+        ),
+      ],
     );
   }
 }

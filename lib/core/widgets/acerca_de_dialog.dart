@@ -5,11 +5,17 @@ class AcercaDeDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Accedemos a los colores del tema actual
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+
     return AlertDialog(
-      backgroundColor: const Color(0xFF1E1E1E), // Fondo oscuro secundario
+      // Usamos 'surface' para que sea Crema en Claro y Gris en Oscuro
+      backgroundColor: colorScheme.surface, 
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(20),
-        side: const BorderSide(color: Color(0xFFD4AF37), width: 1), // Borde dorado
+        side: BorderSide(color: colorScheme.primary, width: 2), // Borde dorado más notable
       ),
       content: SingleChildScrollView(
         child: Column(
@@ -19,43 +25,45 @@ class AcercaDeDialog extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
-                color: Colors.black38,
+                // Fondo dinámico sutil
+                color: colorScheme.onSurface.withOpacity(0.05),
                 shape: BoxShape.circle,
-                border: Border.all(color: const Color(0xFFD4AF37), width: 2),
+                border: Border.all(color: colorScheme.primary, width: 2),
               ),
               child: Image.asset(
-                'assets/images/logo_colegio.png', // Tu logo
-                height: 60,
-                width: 60,
+                'assets/images/logo_colegio.png', 
+                height: 80, // Un poco más grande
+                width: 80,
                 fit: BoxFit.contain,
-                errorBuilder: (_,__,___) => const Icon(Icons.school, size: 50, color: Color(0xFFD4AF37)),
+                errorBuilder: (_,__,___) => Icon(Icons.school, size: 60, color: colorScheme.primary),
               ),
             ),
             const SizedBox(height: 15),
 
             // --- TÍTULO ---
-            const Text(
+            Text(
               "Sistema Bibliotecario",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
+              style: textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.bold,
+                color: colorScheme.onSurface, // Se adapta (Azul Noche o Blanco)
               ),
               textAlign: TextAlign.center,
             ),
-            const Text(
+            Text(
               "Versión 1.0.0",
-              style: TextStyle(color: Colors.grey, fontSize: 12),
+              style: textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.6),
+              ),
             ),
             const SizedBox(height: 20),
-            const Divider(color: Colors.white24),
+            Divider(color: colorScheme.onSurface.withOpacity(0.2)),
             const SizedBox(height: 10),
 
             // --- EQUIPO DE DESARROLLO ---
-            const Text(
+            Text(
               "DESARROLLADO POR:",
               style: TextStyle(
-                color: Color(0xFFD4AF37), // Dorado
+                color: colorScheme.primary, // Dorado
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.5,
@@ -63,32 +71,35 @@ class AcercaDeDialog extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             
-            // Aquí pones a tus 3 compañeros
-            _buildDeveloperRow("Jin patrick Manya Fasanando", "Líder de Proyecto / Backend"),
-            _buildDeveloperRow("Deiviss Jean Pool Palacios Dávila", "Frontend / Diseño"),
-            _buildDeveloperRow("Pedro Sebastian Saavedra Rodrigues", "Base de Datos / QA"),
+            // Tus compañeros (con colores dinámicos)
+            _buildDeveloperRow(context, "Jin Patrick Manya Fasanando", "Líder de Proyecto / Backend"),
+            _buildDeveloperRow(context, "Deiviss Jean Pool Palacios Dávila", "Frontend / Diseño"),
+            _buildDeveloperRow(context, "Pedro Sebastian Saavedra Rodrigues", "Base de Datos / QA"),
 
             const SizedBox(height: 15),
 
             // --- PROFESOR ---
-            const Text(
+            Text(
               "SUPERVISADO POR:",
               style: TextStyle(
-                color: Color(0xFFD4AF37),
+                color: colorScheme.primary,
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.5,
               ),
             ),
             const SizedBox(height: 5),
-            _buildDeveloperRow("Ing. Manuel Antonio Vela Vasquez", "Docente Encargado", isProfessor: true),
+            _buildDeveloperRow(context, "Ing. Manuel Antonio Vela Vasquez", "Docente Encargado", isProfessor: true),
 
             const SizedBox(height: 20),
             
             // --- PIE DE PÁGINA ---
-            const Text(
+            Text(
               "© 2025 - Todos los derechos reservados",
-              style: TextStyle(color: Colors.white30, fontSize: 10),
+              style: TextStyle(
+                color: colorScheme.onSurface.withOpacity(0.4), 
+                fontSize: 10
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -97,21 +108,24 @@ class AcercaDeDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text("Cerrar", style: TextStyle(color: Color(0xFFD4AF37))),
+          child: Text("Cerrar", style: TextStyle(color: colorScheme.primary)),
         ),
       ],
     );
   }
 
-  Widget _buildDeveloperRow(String nombre, String rol, {bool isProfessor = false}) {
+  Widget _buildDeveloperRow(BuildContext context, String nombre, String rol, {bool isProfessor = false}) {
+    final colorScheme = Theme.of(context).colorScheme;
+    
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4.0),
       child: Row(
         children: [
           Icon(
             isProfessor ? Icons.school : Icons.code,
-            size: 16,
-            color: isProfessor ? const Color(0xFFD4AF37) : Colors.white54,
+            size: 18,
+            // Si es profesor Dorado, si es alumno usamos el color del texto normal con opacidad
+            color: isProfessor ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.7),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -120,16 +134,16 @@ class AcercaDeDialog extends StatelessWidget {
               children: [
                 Text(
                   nombre,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: colorScheme.onSurface, // Se ve bien en Claro y Oscuro
                     fontSize: 14,
-                    fontWeight: FontWeight.w500,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
                 Text(
                   rol,
-                  style: const TextStyle(
-                    color: Colors.grey,
+                  style: TextStyle(
+                    color: colorScheme.onSurface.withOpacity(0.6),
                     fontSize: 11,
                   ),
                 ),

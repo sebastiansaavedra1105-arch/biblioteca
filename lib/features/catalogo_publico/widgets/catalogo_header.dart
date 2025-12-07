@@ -1,4 +1,3 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/catalogo_provider.dart';
@@ -38,92 +37,76 @@ class _CatalogoHeaderState extends State<CatalogoHeader> {
   @override
   Widget build(BuildContext context) {
     final catalogoRead = context.read<CatalogoProvider>();
-    final colorDorado = Theme.of(context).colorScheme.primary;
+    
+    // Accedemos a los colores y textos del tema global
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF121212),
-        border: Border(bottom: BorderSide(color: Colors.grey[900]!)),
+        color: colorScheme.surface, 
+        border: Border(bottom: BorderSide(color: Colors.grey.withOpacity(0.2))),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
+          )
+        ],
       ),
       child: Column(
         children: [
-          // FILA 1: BUSCADOR + SWITCH
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextField(
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    hintText: 'Buscar título, autor...',
-                    hintStyle: TextStyle(color: Colors.grey[600]),
-                    prefixIcon: Icon(Icons.search, color: colorDorado),
-                    filled: true,
-                    fillColor: const Color(0xFF252525),
-                    isDense: true,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                  ),
-                  onChanged: (val) => catalogoRead.buscar(val),
-                ),
+          // 1. BUSCADOR ELEGANTE
+          TextField(
+            // CORRECCIÓN FINAL: Usamos 'buscar' que es el método real de tu Provider
+            onChanged: (val) => catalogoRead.buscar(val),
+            style: textTheme.bodyLarge, 
+            decoration: InputDecoration(
+              hintText: 'Buscar por título, autor o ISBN...',
+              hintStyle: TextStyle(color: Colors.grey[500]),
+              prefixIcon: Icon(Icons.search, color: colorScheme.primary), 
+              filled: true,
+              // Color de fondo dinámico (Evitamos 'background' deprecated)
+              fillColor: theme.brightness == Brightness.light 
+                  ? const Color(0xFFF5F5F5) 
+                  : const Color(0xFF2C2C2C),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide.none,
               ),
-              const SizedBox(width: 15),
-              // Switch "Solo Disponibles"
-              Consumer<CatalogoProvider>(
-                builder: (context, provider, _) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF252525),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: provider.soloDisponibles ? Colors.green : Colors.transparent)
-                    ),
-                    child: Row(
-                      children: [
-                        Text("Solo Disponibles", 
-                          style: TextStyle(
-                            color: provider.soloDisponibles ? Colors.green : Colors.grey, 
-                            fontWeight: FontWeight.bold, fontSize: 12
-                          )
-                        ),
-                        const SizedBox(width: 8),
-                        Switch(
-                          value: provider.soloDisponibles, 
-                          onChanged: (v) => provider.toggleSoloDisponibles(v),
-                          activeColor: Colors.green,
-                          activeTrackColor: Colors.green.withOpacity(0.3),
-                          inactiveThumbColor: Colors.grey,
-                          inactiveTrackColor: Colors.grey[800],
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        )
-                      ],
-                    ),
-                  );
-                }
-              )
-            ],
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide(color: Colors.grey.withOpacity(0.2)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(30),
+                borderSide: BorderSide(color: colorScheme.primary, width: 2),
+              ),
+            ),
           ),
-
           const SizedBox(height: 15),
 
-          // FILA 2: CATEGORÍAS CON FLECHAS
+          // 2. FILTROS (Categorías) CON SCROLL
           Row(
             children: [
-              IconButton(icon: const Icon(Icons.arrow_back_ios, size: 16, color: Colors.grey), onPressed: _scrollLeft),
+              IconButton(
+                icon: Icon(Icons.arrow_back_ios, size: 16, color: colorScheme.onSurface.withOpacity(0.5)), 
+                onPressed: _scrollLeft
+              ),
               Expanded(
-                child: SizedBox(
-                  height: 35,
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
                   child: Consumer<CatalogoProvider>(
-                    builder: (context, provider, _) {
-                      return ScrollConfiguration(
-                        behavior: ScrollConfiguration.of(context).copyWith(
-                          dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
-                        ),
-                        child: ListView.builder(
-                          controller: _scrollController,
-                          scrollDirection: Axis.horizontal,
-                          itemCount: provider.categorias.length,
-                          itemBuilder: (ctx, index) {
+                    builder: (context, provider, child) {
+                      return Row(
+                        children: List.generate(
+                          provider.categorias.length,
+                          (index) {
                             final categoria = provider.categorias[index];
                             final isSelected = provider.categoriaSeleccionada == categoria;
                             
@@ -131,18 +114,23 @@ class _CatalogoHeaderState extends State<CatalogoHeader> {
                               padding: const EdgeInsets.only(right: 8),
                               child: ChoiceChip(
                                 label: Text(categoria),
+                                labelStyle: textTheme.labelLarge?.copyWith(
+                                  color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
+                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                                ),
                                 selected: isSelected,
                                 onSelected: (val) {
                                   if (val) provider.cambiarCategoria(categoria);
                                 },
-                                selectedColor: colorDorado,
-                                backgroundColor: const Color(0xFF252525),
-                                labelStyle: TextStyle(
-                                  color: isSelected ? Colors.black : Colors.white70, 
-                                  fontWeight: FontWeight.bold, fontSize: 12
+                                selectedColor: colorScheme.primary, 
+                                backgroundColor: Colors.grey.withOpacity(0.1), 
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                  side: isSelected 
+                                      ? BorderSide.none 
+                                      : BorderSide(color: Colors.grey.withOpacity(0.3)),
                                 ),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                side: BorderSide.none,
+                                showCheckmark: false, 
                               ),
                             );
                           },
@@ -152,7 +140,10 @@ class _CatalogoHeaderState extends State<CatalogoHeader> {
                   ),
                 ),
               ),
-              IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey), onPressed: _scrollRight),
+              IconButton(
+                icon: Icon(Icons.arrow_forward_ios, size: 16, color: colorScheme.onSurface.withOpacity(0.5)), 
+                onPressed: _scrollRight
+              ),
             ],
           ),
         ],
