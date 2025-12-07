@@ -35,12 +35,14 @@ dependencies:
   pdf: ^3.11.0
   printing: ^5.11.0
   intl: ^0.19.0
+  shared_preferences: ^2.3.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
 
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
 
@@ -48,3 +50,20 @@ flutter:
 
   assets:
     - .env
+    - assets/images/
+
+flutter_launcher_icons:
+  android: false      
+  ios: false          
+  image_path: "assets/images/logo_colegio.png" 
+  min_sdk_android: 21 
+  web:
+    generate: true
+    image_path: "assets/images/logo_colegio.png"
+  windows:
+    generate: true
+    icon_size: 48
+    image_path: "assets/images/logo_colegio.png"
+  linux:
+    generate: true
+    image_path: "assets/images/logo_colegio.png"
