@@ -31,51 +31,61 @@ class _AlumnoDialogState extends State<AlumnoDialog> {
   @override
   Widget build(BuildContext context) {
     final esEdicion = widget.alumno != null;
-    final dorado = Theme.of(context).colorScheme.primary;
+    
+    // Accedemos al tema
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return AlertDialog(
-      backgroundColor: const Color(0xFF252525),
-      title: Text(esEdicion ? "Editar Alumno" : "Registrar Alumno", style: const TextStyle(color: Colors.white)),
+      // backgroundColor: colorScheme.surface, // Ya lo maneja el tema por defecto
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Icon(
+            esEdicion ? Icons.edit : Icons.person_add,
+            color: colorScheme.primary,
+          ),
+          const SizedBox(width: 10),
+          Text(
+            esEdicion ? "Editar Alumno" : "Registrar Alumno",
+            style: TextStyle(color: colorScheme.onSurface),
+          ),
+        ],
+      ),
       content: SingleChildScrollView(
         child: Form(
           key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _input("Código / DNI *", _codigoCtrl, req: true),
-              const SizedBox(height: 10),
-              _input("Nombre Completo *", _nombreCtrl, req: true),
-              const SizedBox(height: 10),
+              _input("DNI / Código", _codigoCtrl, req: true, icon: Icons.badge),
+              const SizedBox(height: 15),
+              _input("Nombre Completo", _nombreCtrl, req: true, icon: Icons.person),
+              const SizedBox(height: 15),
               Row(
                 children: [
-                  Expanded(child: _input("Grado", _gradoCtrl)),
+                  Expanded(child: _input("Grado", _gradoCtrl, req: true, icon: Icons.grade)),
                   const SizedBox(width: 10),
-                  Expanded(child: _input("Sección", _seccionCtrl)),
+                  Expanded(child: _input("Sección", _seccionCtrl, req: true, icon: Icons.class_)),
                 ],
               ),
-              
-              if (esEdicion && (widget.alumno!.strikes > 0)) ...[
-                const SizedBox(height: 20),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(color: Colors.red.withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.warning, color: Colors.red),
-                      const SizedBox(width: 10),
-                      Text("Faltas Acumuladas: ${widget.alumno!.strikes}", style: const TextStyle(color: Colors.white)),
-                    ],
-                  ),
-                )
-              ]
             ],
           ),
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar", style: TextStyle(color: Colors.grey))),
+        TextButton(
+          onPressed: () => Navigator.pop(context), 
+          child: Text(
+            "Cancelar", 
+            style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6))
+          )
+        ),
         ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: dorado),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: colorScheme.primary,
+            foregroundColor: Colors.white,
+          ),
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               final nuevoAlumno = Alumno(
@@ -92,22 +102,22 @@ class _AlumnoDialogState extends State<AlumnoDialog> {
               Navigator.pop(context);
             }
           },
-          child: const Text("Guardar", style: TextStyle(color: Colors.black)),
+          child: const Text("Guardar"),
         )
       ],
     );
   }
 
-  Widget _input(String label, TextEditingController ctrl, {bool req = false}) {
+  // Widget de input optimizado que usa el tema global
+  Widget _input(String label, TextEditingController ctrl, {bool req = false, required IconData icon}) {
+    // Nota: Como definimos inputDecorationTheme en AppTheme, 
+    // no necesitamos redefinir bordes ni colores aquí. ¡Esa es la magia!
     return TextFormField(
       controller: ctrl,
-      style: const TextStyle(color: Colors.white),
       validator: req ? (v) => v!.isEmpty ? 'Requerido' : null : null,
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.grey),
-        filled: true, fillColor: Colors.black26,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        prefixIcon: Icon(icon, size: 20),
       ),
     );
   }

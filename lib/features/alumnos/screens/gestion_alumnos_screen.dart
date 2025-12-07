@@ -29,7 +29,11 @@ class _GestionAlumnosScreenState extends State<GestionAlumnosScreen> {
   Widget build(BuildContext context) {
     final provider = context.watch<AlumnosProvider>();
     final esDirector = context.read<AuthProvider>().esDirector;
-    final primaryColor = Theme.of(context).colorScheme.primary;
+    
+    // Accedemos al tema global
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
 
     // Filtro rápido en memoria
     final alumnosFiltrados = provider.alumnos.where((a) {
@@ -39,115 +43,123 @@ class _GestionAlumnosScreenState extends State<GestionAlumnosScreen> {
     }).toList();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      // El fondo ya lo maneja el tema global
       body: Column(
         children: [
-          // --- 1. HEADER ENTERPRISE ---
+          // --- 1. HEADER Y BUSCADOR ---
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E1E1E),
-              border: Border(bottom: BorderSide(color: Color(0xFF333333))),
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
+                )
+              ],
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.people_alt_outlined, color: primaryColor, size: 32),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
                   children: [
-                    const Text(
-                      "Directorio de Alumnos",
-                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
+                    Icon(Icons.school, color: colorScheme.primary, size: 28),
+                    const SizedBox(width: 10),
                     Text(
-                      "${alumnosFiltrados.length} estudiantes registrados",
-                      style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                      "Directorio de Alumnos",
+                      style: textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: colorScheme.onSurface,
+                      ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 15),
                 
-                const Spacer(),
-
-                // Barra de Búsqueda
-                SizedBox(
-                  width: 300,
-                  child: TextField(
-                    controller: _searchCtrl,
-                    onChanged: (val) => setState(() => _filtro = val),
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Buscar por nombre o matrícula...',
-                      hintStyle: TextStyle(color: Colors.grey[600]),
-                      prefixIcon: Icon(Icons.search, color: primaryColor),
-                      filled: true,
-                      fillColor: const Color(0xFF2C2C2C),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                // Buscador
+                TextField(
+                  controller: _searchCtrl,
+                  onChanged: (val) => setState(() => _filtro = val),
+                  decoration: InputDecoration(
+                    hintText: "Buscar por Nombre o DNI...",
+                    prefixIcon: Icon(Icons.search, color: colorScheme.primary),
+                    suffixIcon: _filtro.isNotEmpty 
+                      ? IconButton(
+                          icon: const Icon(Icons.clear), 
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            setState(() => _filtro = '');
+                          }
+                        ) 
+                      : null,
+                    filled: true,
+                    // Color de fondo del input según tema
+                    fillColor: theme.brightness == Brightness.dark 
+                        ? Colors.grey[900] 
+                        : Colors.grey[100],
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: BorderSide.none,
                     ),
                   ),
                 ),
-
-                const SizedBox(width: 16),
-
-                // Botón Nuevo Alumno
-                if (!esDirector)
-                  ElevatedButton.icon(
-                    onPressed: () => showDialog(
-                      context: context, 
-                      builder: (_) => const AlumnoDialog()
-                    ),
-                    icon: const Icon(Icons.person_add, color: Colors.black),
-                    label: const Text("Nuevo Alumno"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                    ),
-                  ),
               ],
             ),
           ),
 
-          // --- 2. TABLA DE DATOS ---
+          // --- 2. LISTA DE ALUMNOS ---
           Expanded(
             child: provider.isLoading
-                ? Center(child: CircularProgressIndicator(color: primaryColor))
-                : Theme(
-                    data: Theme.of(context).copyWith(
-                      cardColor: const Color(0xFF1E1E1E),
-                      dividerColor: const Color(0xFF333333),
-                      textTheme: const TextTheme(bodySmall: TextStyle(color: Colors.white)),
-                    ),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(24),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: PaginatedDataTable(
-                          header: null,
-                          rowsPerPage: 10,
-                          columnSpacing: 20,
-                          showCheckboxColumn: false,
-                          arrowHeadColor: primaryColor,
-                          columns: [
-                            const DataColumn(label: Text("Estado", style: TextStyle(color: Colors.grey))),
-                            const DataColumn(label: Text("Código", style: TextStyle(color: Colors.grey))),
-                            const DataColumn(label: Text("Nombre Completo", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
-                            const DataColumn(label: Text("Grado", style: TextStyle(color: Colors.grey))),
-                            const DataColumn(label: Text("Historial", style: TextStyle(color: Colors.grey))),
-                            if (!esDirector)
-                              const DataColumn(label: Text("Acciones", style: TextStyle(color: Colors.grey))),
-                          ],
-                          source: _AlumnosDataSource(
-                            alumnos: alumnosFiltrados,
-                            context: context,
+                ? Center(child: CircularProgressIndicator(color: colorScheme.primary))
+                : alumnosFiltrados.isEmpty
+                    ? _buildEmptyState(theme)
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: alumnosFiltrados.length,
+                        itemBuilder: (context, index) {
+                          final alumno = alumnosFiltrados[index];
+                          return _AlumnoCard(
+                            alumno: alumno, 
                             esDirector: esDirector,
-                          ),
-                        ),
+                            colorScheme: colorScheme,
+                            textTheme: textTheme,
+                          );
+                        },
                       ),
-                    ),
-                  ),
+          ),
+        ],
+      ),
+
+      // BOTÓN FLOTANTE
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (_) => const AlumnoDialog(),
+          );
+        },
+        backgroundColor: colorScheme.primary,
+        foregroundColor: Colors.white,
+        icon: const Icon(Icons.person_add),
+        label: const Text("Nuevo Alumno"),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(ThemeData theme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.group_off, size: 60, color: theme.colorScheme.onSurface.withOpacity(0.3)),
+          const SizedBox(height: 10),
+          Text(
+            "No se encontraron alumnos", 
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.5)
+            )
           ),
         ],
       ),
@@ -155,185 +167,153 @@ class _GestionAlumnosScreenState extends State<GestionAlumnosScreen> {
   }
 }
 
-// --- DATA SOURCE PARA LA TABLA ---
-class _AlumnosDataSource extends DataTableSource {
-  final List<Alumno> alumnos;
-  final BuildContext context;
+// Widget Interno para la tarjeta (Limpio y reutilizable)
+class _AlumnoCard extends StatelessWidget {
+  final Alumno alumno;
   final bool esDirector;
+  final ColorScheme colorScheme;
+  final TextTheme textTheme;
 
-  _AlumnosDataSource({required this.alumnos, required this.context, required this.esDirector});
+  const _AlumnoCard({
+    required this.alumno,
+    required this.esDirector,
+    required this.colorScheme,
+    required this.textTheme,
+  });
 
   @override
-  DataRow? getRow(int index) {
-    if (index >= alumnos.length) return null;
-    final alumno = alumnos[index];
-    
-    // Lógica visual para Veto y Sanciones
-    bool estaVetado = false;
-    if (alumno.vetadoHasta != null) {
-      estaVetado = alumno.vetadoHasta!.isAfter(DateTime.now());
-    }
-    final tieneStrikes = alumno.strikes > 0;
+  Widget build(BuildContext context) {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
 
-    return DataRow(
-      cells: [
-        // 1. Estado
-        DataCell(
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: estaVetado ? Colors.red.withOpacity(0.2) : (tieneStrikes ? Colors.orange.withOpacity(0.2) : Colors.green.withOpacity(0.2)),
-              borderRadius: BorderRadius.circular(4),
-              border: Border.all(color: estaVetado ? Colors.red : (tieneStrikes ? Colors.orange : Colors.green), width: 0.5),
-            ),
-            child: Text(
-              estaVetado ? "VETADO" : (tieneStrikes ? "Strike ${alumno.strikes}" : "Activo"),
-              style: TextStyle(
-                color: estaVetado ? Colors.red : (tieneStrikes ? Colors.orange : Colors.green),
-                fontSize: 11, fontWeight: FontWeight.bold
-              ),
-            ),
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        // AVATAR
+        leading: CircleAvatar(
+          backgroundColor: colorScheme.primary.withOpacity(0.1),
+          child: Text(
+            alumno.nombreCompleto.isNotEmpty ? alumno.nombreCompleto[0].toUpperCase() : '?',
+            style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold),
           ),
         ),
-        // 2. Código
-        DataCell(Text(alumno.codigo, style: const TextStyle(color: Colors.white70, fontFamily: 'Monospace'))),
-        // 3. Nombre
-        DataCell(Text(alumno.nombreCompleto, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w500))),
-        // 4. Grado
-        DataCell(Text("${alumno.grado} - ${alumno.seccion}", style: const TextStyle(color: Colors.white70))),
-        // 5. Historial
-        DataCell(
-          Row(children: List.generate(3, (i) => Icon(
-            Icons.warning_amber_rounded, 
-            size: 16, 
-            color: i < alumno.strikes ? Colors.orange : Colors.grey[800]
-          ))),
+        
+        // DATOS
+        title: Text(
+          alumno.nombreCompleto,
+          style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
         ),
-        // 6. Acciones
-        if (!esDirector)
-          DataCell(
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.blueAccent, size: 20),
-                  tooltip: "Editar datos",
-                  onPressed: () => showDialog(
-                    context: context, 
-                    builder: (_) => AlumnoDialog(alumno: alumno)
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
-                  tooltip: "Eliminar alumno",
-                  onPressed: () => _confirmarBorrado(alumno),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  @override
-  bool get isRowCountApproximate => false;
-  @override
-  int get rowCount => alumnos.length;
-  @override
-  int get selectedRowCount => 0;
-
-  // --- DIÁLOGO DE CONFIRMACIÓN CON ADVERTENCIA ---
-  void _confirmarBorrado(Alumno alumno) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text("Confirmar Eliminación", style: TextStyle(color: Colors.white)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
+        subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Estás intentando eliminar a:", style: TextStyle(color: Colors.grey[400])),
-            const SizedBox(height: 8),
-            Text(alumno.nombreCompleto, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 16),
-            
-            // Aviso de seguridad
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.amber.withOpacity(0.1),
-                border: Border.all(color: Colors.amber),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.shield, color: Colors.amber, size: 20),
-                  SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      "Si el alumno tiene libros pendientes, la eliminación será bloqueada por seguridad.",
-                      style: TextStyle(color: Colors.amber, fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.badge, size: 14, color: colorScheme.secondary.withOpacity(0.6)),
+                const SizedBox(width: 4),
+                Text(alumno.codigo, style: textTheme.bodySmall),
+                const SizedBox(width: 15),
+                Icon(Icons.class_, size: 14, color: colorScheme.secondary.withOpacity(0.6)),
+                const SizedBox(width: 4),
+                Text("${alumno.grado} - ${alumno.seccion}", style: textTheme.bodySmall),
+              ],
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("Cancelar", style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red[900]),
-            onPressed: () async {
-              Navigator.pop(context); // Cerrar diálogo
 
-              // Capturamos el messenger antes del await (Buenas prácticas)
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
+        // ACCIONES
+        trailing: PopupMenuButton<String>(
+          icon: Icon(Icons.more_vert, color: colorScheme.onSurface.withOpacity(0.6)),
+          onSelected: (value) async {
+            if (value == 'editar') {
+              showDialog(
+                context: context,
+                builder: (_) => AlumnoDialog(alumno: alumno),
+              );
+            } else if (value == 'eliminar') {
+              _confirmarEliminacion(context, scaffoldMessenger);
+            }
+          },
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'editar',
+              child: Row(
+                children: [
+                  Icon(Icons.edit, color: colorScheme.primary, size: 20),
+                  const SizedBox(width: 10),
+                  const Text("Editar"),
+                ],
+              ),
+            ),
+            if (esDirector) 
+              PopupMenuItem(
+                value: 'eliminar',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete, color: colorScheme.error, size: 20),
+                    const SizedBox(width: 10),
+                    Text("Eliminar", style: TextStyle(color: colorScheme.error)),
+                  ],
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+ void _confirmarEliminacion(BuildContext context, ScaffoldMessengerState messenger) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Confirmar Eliminación"),
+        content: Text("¿Estás seguro de eliminar a ${alumno.nombreCompleto}?"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Cancelar")),
+          TextButton(
+            onPressed: () async {
+              // 1. Cerramos el diálogo de confirmación inmediatamente
+              Navigator.pop(ctx); 
               
-              // Ejecutamos el borrado con validación
-              final resultado = await context.read<AlumnosProvider>().borrarAlumno(alumno.id!);
+              // 2. Ejecutamos el borrado usando el context PADRE
+              final res = await context.read<AlumnosProvider>().borrarAlumno(alumno.id!);
               
-              // Verificamos mounted por seguridad
-              if (context.mounted) {
-                if (resultado['success']) {
-                  scaffoldMessenger.showSnackBar(
-                    SnackBar(
-                      content: Text(resultado['message']),
-                      backgroundColor: Colors.green[800],
-                    )
-                  );
-                } else {
-                  // Mostrar alerta visual si fue bloqueado
-                  _mostrarAlertaBloqueo(context, resultado['message']);
-                }
+              // --- CORRECCIÓN DEL ASYNC GAP ---
+              // Verificamos si la pantalla padre (GestionAlumnosScreen) sigue viva
+              if (!context.mounted) return;
+
+              if (res['success']) {
+                messenger.showSnackBar(SnackBar(
+                  content: Text(res['message']),
+                  backgroundColor: Colors.green,
+                ));
+              } else {
+                _mostrarAlertaBloqueo(context, res['message']);
               }
             },
-            child: const Text("Eliminar", style: TextStyle(color: Colors.white)),
+            child: Text("Eliminar", style: TextStyle(color: colorScheme.error)),
           ),
         ],
       ),
     );
   }
 
-  // --- DIÁLOGO DE ERROR / BLOQUEO ---
   void _mostrarAlertaBloqueo(BuildContext context, String mensaje) {
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Row(children: [
-          Icon(Icons.block, color: Colors.red),
-          SizedBox(width: 10),
-          Text("Acción Denegada", style: TextStyle(color: Colors.white))
+        title: Row(children: [
+          Icon(Icons.block, color: colorScheme.error),
+          const SizedBox(width: 10),
+          const Text("Acción Denegada")
         ]),
-        content: Text(mensaje, style: const TextStyle(color: Colors.white70)),
+        content: Text(mensaje),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Entendido", style: TextStyle(color: Colors.blueAccent)),
+            child: const Text("Entendido"),
           )
         ],
       )

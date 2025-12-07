@@ -262,90 +262,109 @@ class LibrosProvider extends ChangeNotifier {
   }
 
   // --- ACCIONES DE PRÉSTAMOS (Transacciones Manuales con SyncService) ---
+ // --- REGISTRAR PRÉSTAMO (CORREGIDO) ---
   Future<bool> registrarPrestamo({
-  required Libro libro,
-  required Alumno alumno, 
-  required DateTime fechaEntrega,
-}) async {
-  _isLoading = true;
-  notifyListeners();
+    required Libro libro,
+    required Alumno alumno, // Puede ser 'dynamic' o 'Alumno' según tu import
+    required DateTime fechaEntrega,
+    required String usuarioId, // <--- ESTE ERA EL PARÁMETRO FALTANTE
+  }) async {
+    _isLoading = true;
+    notifyListeners();
 
-  try {
-    // 1. Crear el Préstamo
-    final prestamoMap = {
-      // 'id': null, // DEJA QUE SYNC SERVICE LO GENERE O GENÉRALO TÚ CON UUID SI QUIERES
-      'libro_id': libro.id,
-      'alumno_id': alumno.id, 
-      'libro_titulo': libro.titulo,
-      'nombre_alumno': alumno.nombreCompleto, 
-      // 'codigo_alumno': alumno.codigo, <--- BORRAR ESTA LÍNEA, CAUSA EL ERROR
-      'fecha_prestamo': DateTime.now().toIso8601String(),
-      'fecha_entrega': fechaEntrega.toIso8601String(),
-      'activo': 1 // SQLite usa 1 para true
-    };
-      
-      await _syncService.insertar('prestamos', prestamoMap);
+    try {
+      final db = await _dbService.database;
 
-      // 2. Actualizar el Stock del Libro
-      final nuevoStock = libro.copiasDisponibles - 1;
-      await _syncService.actualizar(
-        'libros', 
-        {'copias_disponibles': nuevoStock}, 
-        libro.id!
-      );
+      await db.transaction((txn) async {
+        // 1. Verificar stock
+        final libroData = await txn.query('libros', columns: ['copias_disponibles'], where: 'id = ?', whereArgs: [libro.id]);
+        
+        if (libroData.isEmpty) throw Exception("Libro no encontrado");
+        final disponibles = libroData.first['copias_disponibles'] as int;
 
+        if (disponibles <= 0) throw Exception("No hay stock");
+
+        // 2. Insertar Préstamo
+        final nuevoPrestamo = {
+          'id': DateTime.now().millisecondsSinceEpoch.toString(),
+          'libro_id': libro.id,
+          'libro_titulo': libro.titulo,
+          'alumno_id': alumno.id,
+          'alumno_nombre': alumno.nombreCompleto,
+          'usuario_id': usuarioId, // Guardamos quién prestó
+          'fecha_prestamo': DateTime.now().toIso8601String(),
+          'fecha_entrega': fechaEntrega.toIso8601String(),
+          'activo': 1,
+          'renovaciones': 0
+        };
+        await txn.insert('prestamos', nuevoPrestamo);
+
+        // 3. Actualizar Stock
+        await txn.rawUpdate('UPDATE libros SET copias_disponibles = copias_disponibles - 1 WHERE id = ?', [libro.id]);
+      });
+
+      // 4. Actualizar UI
       await cargarTodo();
       return true;
+
     } catch (e) {
-      _error = "Error préstamo: $e";
-      return false;
-    } finally {
+      _error = e.toString();
       _isLoading = false;
       notifyListeners();
+      return false;
     }
   }
 
-  // --- DEVOLUCIONES ---
-  Future<void> registrarDevolucion(String prestamoId, String libroId) async {
+  // --- DEVOLUCIONES (CORREGIDO) ---
+  Future<bool> registrarDevolucion({
+    required String prestamoId, 
+    required String libroId
+  }) async {
+    _isLoading = true; // Importante: notificar carga
+    notifyListeners();
+
     try {
-      // 1. Usamos SyncService para marcar el préstamo como inactivo (Local + Nube)
+      // 1. Usamos SyncService para marcar el préstamo como inactivo (devuelto)
       await _syncService.actualizar(
         'prestamos', 
-        {'activo': 0, 'fecha_entrega': DateTime.now().toIso8601String()}, 
+        {
+          'activo': 0, 
+          'fecha_devolucion_real': DateTime.now().toIso8601String() // Usamos un campo de devolución real
+        }, 
         prestamoId
       );
 
       // 2. Buscamos el libro en memoria para saber su stock actual
-      final libroActual = _libros.firstWhere(
-        (l) => l.id == libroId, 
-        orElse: () => Libro(
-          id: 'temp', codigoBarras: '', titulo: '', autor: '', isbn: '', 
-          anio: 0, editorial: '', categoria: '', copias: 0, copiasDisponibles: 0, 
-          estado: '', observacion: ''
-        )
-      );
+      // Usamos firstWhere con orElse manejado
+      Libro? libroActual;
+      try {
+        libroActual = _libros.firstWhere((l) => l.id == libroId);
+      } catch (_) {
+        debugPrint("Libro no encontrado en memoria local.");
+      }
 
-      if (libroActual.id != 'temp') {
+      if (libroActual != null) {
         // 3. Aumentamos el stock (+1) usando SyncService
         await _syncService.actualizar(
           'libros', 
           {'copias_disponibles': libroActual.copiasDisponibles + 1}, 
           libroId
         );
-      } else {
-        debugPrint("Libro no encontrado en memoria, se recomienda recargar.");
-      }
+      } 
 
       // 4. Recargamos todo para que la pantalla se actualice sola
       await cargarTodo();
       
+      return true; // <--- Retornamos TRUE para que la pantalla sepa que tuvo éxito
+      
     } catch (e) {
       _error = "Error al registrar devolución: $e";
+      _isLoading = false; // Quitamos carga en caso de error
       notifyListeners();
-      rethrow; 
+      return false; // <--- Retornamos FALSE si falló
     }
   }
-
+  
   // --- ACCIÓN DE DIRECTOR (SYNC DOWN) ---
   Future<void> sincronizarDesdeNube() async {
     _isLoading = true;

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 
+// IMPORTS NECESARIOS PARA NAVEGAR
+import '../../dashboard/screens/dashboard_screen.dart';
+import '../../director/screens/director_dashboard_screen.dart'; // Por si tienes rol de director
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -21,23 +25,34 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final authProvider = context.read<AuthProvider>();
     
-    // Cerramos el teclado antes de intentar login
     FocusScope.of(context).unfocus();
 
+    // 1. Intentamos Login
     final exito = await authProvider.login(
-      _userController.text.trim(), // Importante: Trim para quitar espacios accidentales
+      _userController.text.trim(), 
       _passController.text
     );
 
     if (!mounted) return;
 
     if (exito) {
-      Navigator.pop(context); 
+      // --- CORRECCIÓN AQUÍ ---
+      // Antes usábamos pop(), ahora navegamos al Dashboard correspondiente
+      
+      final Widget pantallaDestino = authProvider.esDirector 
+          ? const DirectorDashboardScreen() 
+          : const DashboardScreen();
+
+      Navigator.pushReplacement(
+        context, 
+        MaterialPageRoute(builder: (_) => pantallaDestino)
+      );
+      // -----------------------
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('❌ ${authProvider.errorMessage ?? "Error de acceso"}'),
-          backgroundColor: Colors.red.shade900,
+          backgroundColor: Theme.of(context).colorScheme.error,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -46,11 +61,13 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final colorDorado = Theme.of(context).colorScheme.primary;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    
     final isLoading = context.select<AuthProvider, bool>((p) => p.isLoading);
 
     return Scaffold(
-      backgroundColor: Colors.black,
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -62,66 +79,127 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(Icons.shield, size: 80, color: colorDorado), // Icono de escudo para seguridad
-                  const SizedBox(height: 20),
+                  // --- 1. LOGO INSTITUCIONAL ---
+                  Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
+                          )
+                        ],
+                        border: Border.all(color: colorScheme.primary, width: 2),
+                      ),
+                      child: Image.asset(
+                        'assets/images/logo_colegio.png',
+                        height: 80,
+                        width: 80,
+                        errorBuilder: (_,__,___) => Icon(Icons.school, size: 60, color: colorScheme.primary),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+
+                  // --- 2. TÍTULOS ---
                   Text(
-                    "ACCESO SEGURO",
+                    "Bienvenido",
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: colorDorado,
-                      fontSize: 22,
+                    style: textTheme.displaySmall?.copyWith(
+                      color: colorScheme.onSurface, // Corregido
                       fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Inicie sesión para gestionar la biblioteca",
+                    textAlign: TextAlign.center,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.onSurface.withOpacity(0.7), // Corregido
                     ),
                   ),
                   const SizedBox(height: 40),
-                  
+
+                  // --- 3. INPUT USUARIO ---
                   TextFormField(
                     controller: _userController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _inputDecoration("Usuario", Icons.person, colorDorado),
-                    validator: (v) => v!.isEmpty ? 'Ingrese usuario' : null,
+                    style: TextStyle(color: colorScheme.onSurface),
+                    decoration: _inputDecoration(
+                      "Usuario", 
+                      Icons.person_outline, 
+                      colorScheme
+                    ),
+                    validator: (value) => value!.isEmpty ? 'Ingrese su usuario' : null,
                   ),
                   const SizedBox(height: 20),
 
+                  // --- 4. INPUT CONTRASEÑA ---
                   TextFormField(
                     controller: _passController,
                     obscureText: _isObscure,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: _inputDecoration("Contraseña", Icons.lock, colorDorado).copyWith(
+                    style: TextStyle(color: colorScheme.onSurface),
+                    decoration: _inputDecoration(
+                      "Contraseña", 
+                      Icons.lock_outline, 
+                      colorScheme
+                    ).copyWith(
                       suffixIcon: IconButton(
-                        icon: Icon(_isObscure ? Icons.visibility : Icons.visibility_off, color: Colors.grey),
+                        icon: Icon(
+                          _isObscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                          color: Colors.grey,
+                        ),
                         onPressed: () => setState(() => _isObscure = !_isObscure),
                       ),
                     ),
-                    validator: (v) => v!.isEmpty ? 'Ingrese contraseña' : null,
+                    validator: (value) => value!.isEmpty ? 'Ingrese su contraseña' : null,
+                    onFieldSubmitted: (_) => _handleLogin(),
                   ),
-
                   const SizedBox(height: 40),
 
+                  // --- 5. BOTÓN INGRESAR ---
                   SizedBox(
                     height: 55,
                     child: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: colorDorado,
-                        foregroundColor: Colors.black,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                      ),
                       onPressed: isLoading ? null : _handleLogin,
-                      child: isLoading 
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: colorScheme.primary,
+                        foregroundColor: Colors.white,
+                        elevation: 4,
+                        shadowColor: colorScheme.primary.withOpacity(0.4),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: isLoading
                         ? const SizedBox(
-                            width: 24, 
                             height: 24, 
-                            child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2)
+                            width: 24, 
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
                           )
-                        : const Text("INGRESAR", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        : const Text(
+                            "INGRESAR", 
+                            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.0),
+                          ),
                     ),
                   ),
                   
                   const SizedBox(height: 20),
-                  TextButton(
+
+                  // --- 6. BOTÓN VOLVER ---
+                  TextButton.icon(
                     onPressed: () => Navigator.pop(context),
-                    child: const Text("Volver al Catálogo", style: TextStyle(color: Colors.grey)),
+                    icon: Icon(Icons.arrow_back, size: 18, color: colorScheme.secondary),
+                    label: Text(
+                      "Volver al Catálogo", 
+                      style: TextStyle(
+                        color: colorScheme.secondary,
+                        fontWeight: FontWeight.w600
+                      )
+                    ),
                   )
                 ],
               ),
@@ -132,29 +210,10 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  InputDecoration _inputDecoration(String label, IconData icon, Color color) {
+  InputDecoration _inputDecoration(String label, IconData icon, ColorScheme colors) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(color: Colors.grey),
-      prefixIcon: Icon(icon, color: color),
-      filled: true,
-      fillColor: const Color(0xFF1A1A1A),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: Colors.grey[800]!),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: color),
-      ),
-      errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: BorderSide(color: Colors.red.shade900),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: Colors.red),
-      ),
+      prefixIcon: Icon(icon, color: colors.primary),
     );
   }
 }

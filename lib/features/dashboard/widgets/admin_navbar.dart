@@ -12,51 +12,77 @@ class AdminNavbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorDorado = Theme.of(context).colorScheme.primary;
+    // Obtenemos los colores del tema actual
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Container(
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Colors.white12, width: 0.5)),
+      decoration: BoxDecoration(
+        color: colorScheme.surface, // Fondo dinámico (Crema o Negro)
+        border: Border(
+          top: BorderSide(
+            color: colorScheme.onSurface.withOpacity(0.1), // Línea sutil separadora
+            width: 0.5
+          )
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          )
+        ],
       ),
       child: BottomNavigationBar(
-        // 'fixed' es importante porque ahora tenemos 6 botones y si no se vería raro
-        type: BottomNavigationBarType.fixed, 
-        backgroundColor: Colors.black,
-        selectedItemColor: colorDorado,
-        unselectedItemColor: Colors.grey,
-        selectedFontSize: 10, // Reducimos un poco la fuente para que quepan todos
+        type: BottomNavigationBarType.fixed, // Necesario para 6 botones
+        backgroundColor: colorScheme.surface, // Se adapta al tema
+        
+        // COLORES
+        selectedItemColor: colorScheme.primary, // Dorado institucional
+        unselectedItemColor: colorScheme.onSurface.withOpacity(0.6), // Gris/Azul según tema
+        
+        selectedFontSize: 11,
         unselectedFontSize: 10,
+        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold),
+        
         currentIndex: currentIndex,
         onTap: onTap,
+        
         items: const <BottomNavigationBarItem>[
           // Índice 0
           BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard),
+            icon: Icon(Icons.dashboard_outlined),
+            activeIcon: Icon(Icons.dashboard),
             label: 'Resumen',
           ),
           // Índice 1
           BottomNavigationBarItem(
             icon: Icon(Icons.add_circle_outline),
+            activeIcon: Icon(Icons.add_circle),
             label: 'Prestar',
           ),
           // Índice 2
           BottomNavigationBarItem(
-            icon: Icon(Icons.assignment_return),
+            icon: Icon(Icons.assignment_return_outlined),
+            activeIcon: Icon(Icons.assignment_return),
             label: 'Devolver',
           ),
-          // Índice 3:
+          // Índice 3
           BottomNavigationBarItem(
-            icon: Icon(Icons.school),
+            icon: Icon(Icons.school_outlined),
+            activeIcon: Icon(Icons.school),
             label: 'Alumnos',
           ),
           // Índice 4
           BottomNavigationBarItem(
-            icon: Icon(Icons.book),
+            icon: Icon(Icons.library_add_outlined),
+            activeIcon: Icon(Icons.library_add),
             label: 'Libro +',
           ),
           // Índice 5
           BottomNavigationBarItem(
-            icon: Icon(Icons.list),
+            icon: Icon(Icons.inventory_2_outlined),
+            activeIcon: Icon(Icons.inventory_2),
             label: 'Inventario',
           ),
         ],

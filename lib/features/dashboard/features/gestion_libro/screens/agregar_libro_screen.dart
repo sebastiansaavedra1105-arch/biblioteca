@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -25,7 +26,7 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
   late TextEditingController _editCtrl;
   late TextEditingController _anioCtrl;
   late TextEditingController _copCtrl;
-  late TextEditingController _obsCtrl; // <--- NUEVO
+  late TextEditingController _obsCtrl;
 
   @override
   void initState() {
@@ -36,11 +37,11 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
     _titCtrl = TextEditingController(text: l?.titulo ?? '');
     _autCtrl = TextEditingController(text: l?.autor ?? '');
     _editCtrl = TextEditingController(text: l?.editorial ?? '');
-    _anioCtrl = TextEditingController(text: l?.anio.toString() ?? '');
+    _anioCtrl = TextEditingController(text: l?.anio.toString() ?? DateTime.now().year.toString());
     _copCtrl = TextEditingController(text: l?.copias.toString() ?? '1');
-    _obsCtrl = TextEditingController(text: l?.observacion ?? ''); // <--- NUEVO
-    
-    // Inicializamos provider (Categoría, Estado, Foto)
+    _obsCtrl = TextEditingController(text: l?.observacion ?? '');
+
+    // Inicializar el Provider con los datos del libro (si es edición)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<FormLibroProvider>().initData(l);
     });
@@ -58,30 +59,54 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
     super.dispose();
   }
 
+  void _generarCodigo() {
+    final random = Random();
+    final cod = "LIB-${1000 + random.nextInt(9000)}-${DateTime.now().year}";
+    setState(() {
+      _codCtrl.text = cod;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final formProvider = context.watch<FormLibroProvider>();
     final esEdicion = widget.libroParaEditar != null;
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(esEdicion ? "Editar Libro" : "Nuevo Libro"),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
+      // CORRECCIÓN: Solo mostramos AppBar si estamos EDITANDO (para tener botón 'Atrás').
+      // Si estamos AGREGANDO, usamos el título del Dashboard y ocultamos este para no duplicar.
+      appBar: esEdicion 
+          ? AppBar(title: const Text("Editar Libro"), elevation: 0) 
+          : null, 
+      
+      backgroundColor: theme.scaffoldBackgroundColor, // Mantiene coherencia de color
+      
       body: SingleChildScrollView(
         child: Padding(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.all(24),
           child: Form(
             key: formProvider.formKey,
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Texto instructivo (Solo si es nuevo, para llenar el espacio visual)
+                if (!esEdicion) ...[
+                  Text(
+                    "Complete la ficha técnica del material bibliográfico.",
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.6)
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                ],
+
+                // SECCIÓN SUPERIOR: FOTO E INPUTS PRINCIPALES
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const LibroImagePicker(),
-                    const SizedBox(width: 15),
+                    const SizedBox(width: 20),
                     Expanded(
                       child: LibroFormInputs(
                         codCtrl: _codCtrl,
@@ -90,15 +115,18 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
                         editCtrl: _editCtrl,
                         anioCtrl: _anioCtrl,
                         copCtrl: _copCtrl,
-                        obsCtrl: _obsCtrl, // <--- Conectado
-                        onCodigoGenerado: () => setState((){}), 
+                        obsCtrl: _obsCtrl,
+                        onCodigoGenerado: _generarCodigo,
                       ),
                     ),
                   ],
                 ),
 
                 const SizedBox(height: 30),
+                Divider(color: theme.colorScheme.onSurface.withOpacity(0.1)),
+                const SizedBox(height: 20),
 
+                // BOTONES DE ACCIÓN
                 LibroActionButtons(
                   esEdicion: esEdicion,
                   libroOriginal: widget.libroParaEditar,
@@ -108,8 +136,11 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
                   editCtrl: _editCtrl,
                   anioCtrl: _anioCtrl,
                   copCtrl: _copCtrl,
-                  obsCtrl: _obsCtrl, // <--- Enviamos al botón de guardar
+                  obsCtrl: _obsCtrl,
                 ),
+                
+                // Espacio extra al final para que no tape el botón flotante si hubiera
+                const SizedBox(height: 80),
               ],
             ),
           ),

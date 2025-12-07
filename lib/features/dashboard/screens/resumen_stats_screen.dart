@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/libros_provider.dart';
+// Importamos el widget reutilizable
+import '../widgets/stat_card.dart';
 
 class ResumenStatsScreen extends StatelessWidget {
   const ResumenStatsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     // Escuchamos los datos
     return Consumer<LibrosProvider>(
       builder: (context, provider, child) {
@@ -15,72 +20,141 @@ class ResumenStatsScreen extends StatelessWidget {
         final prestamosActivos = stats['prestamosActivos'] ?? 0;
         final librosDisponibles = stats['librosDisponibles'] ?? 0;
 
-        // Si está vacío
+        // ESTADO: VACÍO (Con estilos dinámicos)
         if (totalLibros == 0 && !provider.isLoading) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.library_books_outlined, size: 80, color: Colors.grey[800]),
+                Icon(
+                  Icons.library_books_outlined, 
+                  size: 80, 
+                  color: colorScheme.onSurface.withOpacity(0.2) // Gris dinámico
+                ),
                 const SizedBox(height: 20),
-                const Text("La base de datos está vacía", style: TextStyle(fontSize: 18, color: Colors.grey)),
+                Text(
+                  "La base de datos está vacía", 
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: colorScheme.onSurface.withOpacity(0.5)
+                  )
+                ),
               ],
             ),
           );
         }
 
-        return Padding(
-          padding: const EdgeInsets.all(16.0),
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text("Bienvenido, Admin", style: TextStyle(color: Colors.grey[400], fontSize: 16)),
-              const SizedBox(height: 20),
-              Expanded(
-                child: GridView.count(
-                  crossAxisCount: 4,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                  childAspectRatio: 1.1,
-                  children: [
-                    _buildStatCard(context, 'Total Libros', totalLibros.toString(), Colors.blue, Icons.menu_book),
-                    _buildStatCard(context, 'Disponibles', librosDisponibles.toString(), Colors.green, Icons.check_circle_outline),
-                    _buildStatCard(context, 'Prestados', prestamosActivos.toString(), Colors.orange, Icons.people_alt),
-                    _buildStatCard(context, 'Vencidos', '0', Colors.red, Icons.warning_amber),
-                  ],
+              // SALUDO
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: colorScheme.primary,
+                    radius: 20,
+                    child: const Icon(Icons.person, color: Colors.white),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Bienvenido, Admin", 
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface
+                        )
+                      ),
+                      Text(
+                        "Resumen de hoy", 
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: colorScheme.onSurface.withOpacity(0.6)
+                        )
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 30),
+              
+              // TARJETAS DE ESTADÍSTICAS
+              // Usamos Wrap para que sea responsive en todas las pantallas
+              Wrap(
+                spacing: 16, // Espacio horizontal
+                runSpacing: 16, // Espacio vertical
+                children: [
+                  SizedBox(
+                    width: 260, // Ancho fijo por tarjeta
+                    child: StatCard(
+                      title: 'Total Libros',
+                      value: totalLibros.toString(),
+                      icon: Icons.menu_book,
+                      color: Colors.blue,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 260,
+                    child: StatCard(
+                      title: 'Disponibles',
+                      value: librosDisponibles.toString(),
+                      icon: Icons.check_circle_outline,
+                      color: Colors.green,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 260,
+                    child: StatCard(
+                      title: 'Prestados',
+                      value: prestamosActivos.toString(),
+                      icon: Icons.people_alt,
+                      color: Colors.orange,
+                    ),
+                  ),
+                  SizedBox(
+                    width: 260,
+                    child: StatCard(
+                      title: 'Vencidos',
+                      value: '0', // Aquí conectarás la lógica real de vencidos
+                      icon: Icons.warning_amber,
+                      color: colorScheme.error, // Rojo Vino
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 40),
+              
+              // SECCIÓN DE GRÁFICOS O LISTAS FUTURAS
+              Text(
+                "Actividad Reciente",
+                style: theme.textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurface
+                ),
+              ),
+              const SizedBox(height: 10),
+              
+              // Placeholder para futura tabla de actividad
+              Container(
+                height: 200,
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: colorScheme.onSurface.withOpacity(0.1)),
+                ),
+                child: Center(
+                  child: Text(
+                    "No hay actividad reciente registrada",
+                    style: TextStyle(color: colorScheme.onSurface.withOpacity(0.4)),
+                  ),
                 ),
               ),
             ],
           ),
         );
       },
-    );
-  }
-
-  Widget _buildStatCard(BuildContext context, String title, String count, Color color, IconData icon) {
-    return Card(
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          gradient: LinearGradient(
-            colors: [color.withOpacity(0.2), Colors.transparent],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: color, size: 30),
-              const Spacer(),
-              Text(count, style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: Colors.white)),
-              Text(title, style: TextStyle(fontSize: 14, color: Colors.grey[400])),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

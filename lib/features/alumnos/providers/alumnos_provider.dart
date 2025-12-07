@@ -46,7 +46,7 @@ class AlumnosProvider extends ChangeNotifier {
     }
   }
 
-  // --- GUARDAR / EDITAR (UPSERT) ---
+  // --- GUARDAR (CREAR O EDITAR) ---
   Future<bool> guardarAlumno(Alumno alumno, {bool esEdicion = false}) async {
     _isLoading = true;
     notifyListeners();
@@ -54,12 +54,11 @@ class AlumnosProvider extends ChangeNotifier {
     try {
       final mapa = alumno.toMap();
       
-      if (esEdicion && alumno.id != null) {
+      if (esEdicion) {
         // Actualizar
         await _syncService.actualizar('alumnos', mapa, alumno.id!);
       } else {
-        // Insertar (Quitamos ID nulo para que SyncService genere UUID)
-        if (mapa['id'] == null) mapa.remove('id');
+        // Crear
         await _syncService.insertar('alumnos', mapa);
       }
 
@@ -99,14 +98,13 @@ class AlumnosProvider extends ChangeNotifier {
       }
 
       // 2. Si está limpio, procedemos a borrar
-      // (Gracias al ON DELETE SET NULL en SQL, el historial textual se mantiene)
       await _syncService.borrar('alumnos', id);
       
       await cargarAlumnos();
       return {'success': true, 'message': 'Alumno eliminado correctamente.'};
 
     } catch (e) {
-      return {'success': false, 'message': "Error técnico: $e"};
+      return {'success': false, 'message': 'Error: $e'};
     } finally {
       _isLoading = false;
       notifyListeners();

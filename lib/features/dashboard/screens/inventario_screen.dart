@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
+
+// Imports de Lógica
 import 'package:biblio/core/models/libro.dart';
 import 'package:biblio/features/dashboard/providers/libros_provider.dart';
-import 'package:biblio/features/dashboard/features/gestion_libro/screens/agregar_libro_screen.dart';
 import 'package:biblio/features/auth/providers/auth_provider.dart';
 import 'package:biblio/features/dashboard/features/gestion_libro/providers/form_libro_provider.dart';
+
+// Imports de Pantallas y Widgets
+import 'package:biblio/features/dashboard/features/gestion_libro/screens/agregar_libro_screen.dart';
+import '../widgets/inventario_search_bar.dart'; // <--- El que creamos
+import '../widgets/inventario_book_item.dart';  // <--- El que creamos
 
 class InventarioScreen extends StatefulWidget {
   const InventarioScreen({super.key});
@@ -19,12 +25,22 @@ class _InventarioScreenState extends State<InventarioScreen> {
   Timer? _debounce;
 
   @override
+  void initState() {
+    super.initState();
+    // Carga inicial para asegurar datos frescos
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<LibrosProvider>().cargarTodo();
+    });
+  }
+
+  @override
   void dispose() {
     _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
 
+  // Lógica de búsqueda con retraso para no saturar la BD
   void _onSearchChanged(String query) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     _debounce = Timer(const Duration(milliseconds: 500), () {
@@ -32,415 +48,117 @@ class _InventarioScreenState extends State<InventarioScreen> {
     });
   }
 
+  // Navegar a Editar (Inyectando el Provider necesario)
+  void _irAEditar(Libro libro) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChangeNotifierProvider(
+          create: (_) => FormLibroProvider(), // Creamos una instancia limpia del formulario
+          child: AgregarLibroScreen(libroParaEditar: libro),
+        ),
+      ),
+    ).then((_) {
+      // Al volver, recargamos la lista por si hubo cambios
+      if (mounted) context.read<LibrosProvider>().cargarTodo();
+    });
+  }
+
+  // Lógica de Borrado
+  void _confirmarBorrado(BuildContext context, Libro libro) {
+    final theme = Theme.of(context);
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.colorScheme.surface,
+        title: const Text("Confirmar Borrado"),
+        content: Text("¿Realmente deseas eliminar '${libro.titulo}' del sistema?\nEsta acción no se puede deshacer."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final provider = context.read<LibrosProvider>();
+              await provider.borrarLibro(libro.id!);
+              
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text("Libro '${libro.titulo}' eliminado"),
+                    backgroundColor: theme.colorScheme.error,
+                  )
+                );
+              }
+            },
+            child: const Text("Borrar Definitivamente"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<LibrosProvider>();
     final esDirector = context.read<AuthProvider>().esDirector;
-    final primaryColor = Theme.of(context).colorScheme.primary;
+    final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      // Ya no necesitamos AppBar aquí porque el Dashboard tiene el título "INVENTARIO GENERAL"
       body: Column(
         children: [
-          // --- 1. ENCABEZADO FIJO (Barra de herramientas) ---
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-            decoration: const BoxDecoration(
-              color: Color(0xFF1E1E1E),
-              border: Border(bottom: BorderSide(color: Color(0xFF333333))),
-            ),
-            child: Row(
-              children: [
-                // Título e Icono
-                Icon(
-                  esDirector ? Icons.analytics_outlined : Icons.inventory_2_outlined,
-                  color: primaryColor,
-                  size: 32,
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      esDirector ? "Visor de Inventario" : "Gestión de Inventario",
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      "${provider.libros.length} libros encontrados",
-                      style: TextStyle(color: Colors.grey[400], fontSize: 12),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-
-                // Barra de Búsqueda
-                SizedBox(
-                  width: 300,
-                  child: TextField(
-                    controller: _searchCtrl,
-                    onChanged: _onSearchChanged,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: 'Buscar por título, autor o código...',
-                      hintStyle: TextStyle(color: Colors.grey[600]),
-                      prefixIcon: Icon(Icons.search, color: primaryColor),
-                      filled: true,
-                      fillColor: const Color(0xFF2C2C2C),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: BorderSide.none,
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                    ),
-                  ),
-                ),
-
-                const SizedBox(width: 16),
-
-                // Botón "Nuevo Libro" (SOLO ADMIN)
-               if (!esDirector)
-                  ElevatedButton.icon(
-                    onPressed: () {
-                       Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => 
-                          ChangeNotifierProvider(
-                            create: (_) => FormLibroProvider(),
-                            child: const AgregarLibroScreen(),
-                          )
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.add, color: Colors.black),
-                    label: const Text("Nuevo Libro"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      foregroundColor: Colors.black,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20,
-                        vertical: 18,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                  ),
-              ],
+          // 1. BARRA DE BÚSQUEDA
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: InventarioSearchBar(
+              controller: _searchCtrl,
+              onChanged: _onSearchChanged,
             ),
           ),
 
-          // --- 2. TABLA DE DATOS (EXPANDIDA) ---
+          // 2. LISTA DE LIBROS
           Expanded(
-            child: provider.libros.isEmpty
-                ? _buildEmptyState()
-                : Theme(
-                    data: Theme.of(context).copyWith(
-                      cardColor: const Color(0xFF1E1E1E),
-                      dividerColor: const Color(0xFF333333),
-                      textTheme: const TextTheme(
-                        bodySmall: TextStyle(color: Colors.white),
-                      ),
-                    ),
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(24),
-                      child: SizedBox(
-                        width: double.infinity,
-                        child: PaginatedDataTable(
-                          header: null,
-                          rowsPerPage: 10,
-                          columnSpacing: 20,
-                          showCheckboxColumn: false,
-                          arrowHeadColor: primaryColor,
-                          columns: [
-                            const DataColumn(
-                              label: Text(
-                                "Portada",
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ),
-                            const DataColumn(
-                              label: Text(
-                                "Código",
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ),
-                            const DataColumn(
-                              label: Text(
-                                "Título",
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                            const DataColumn(
-                              label: Text(
-                                "Autor",
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ),
-                            const DataColumn(
-                              label: Text(
-                                "Categoría",
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ),
-                            const DataColumn(
-                              label: Text(
-                                "Stock",
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ),
-                            const DataColumn(
-                              label: Text(
-                                "Estado",
-                                style: TextStyle(color: Colors.grey),
-                              ),
-                            ),
-                            if (!esDirector)
-                              const DataColumn(
-                                label: Text(
-                                  "Acciones",
-                                  style: TextStyle(color: Colors.grey),
-                                ),
-                              ),
-                          ],
-                          source: _LibrosDataSource(
-                            libros: provider.libros,
-                            context: context,
-                            provider: provider,
+            child: provider.isLoading
+                ? Center(child: CircularProgressIndicator(color: theme.colorScheme.primary))
+                : provider.libros.isEmpty
+                    ? _buildEmptyState(theme)
+                    : ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        itemCount: provider.libros.length,
+                        itemBuilder: (context, index) {
+                          final libro = provider.libros[index];
+                          return InventarioBookItem(
+                            libro: libro,
                             esDirector: esDirector,
-                          ),
-                        ),
+                            onEdit: () => _irAEditar(libro),
+                            onDelete: () => _confirmarBorrado(context, libro),
+                          );
+                        },
                       ),
-                    ),
-                  ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(ThemeData theme) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.library_books_outlined, size: 80, color: Colors.grey[800]),
-          const SizedBox(height: 16),
+          Icon(Icons.inventory_2_outlined, size: 80, color: theme.colorScheme.onSurface.withOpacity(0.2)),
+          const SizedBox(height: 20),
           Text(
             "No se encontraron libros",
-            style: TextStyle(color: Colors.grey[500], fontSize: 18),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// --- CLASE DATA SOURCE PARA LA TABLA ---
-class _LibrosDataSource extends DataTableSource {
-  final List<Libro> libros;
-  final BuildContext context;
-  final LibrosProvider provider;
-  final bool esDirector;
-
-  _LibrosDataSource({
-    required this.libros,
-    required this.context,
-    required this.provider,
-    required this.esDirector,
-  });
-
-  @override
-  DataRow? getRow(int index) {
-    if (index >= libros.length) return null;
-    final libro = libros[index];
-    final colorEstado =
-        libro.copiasDisponibles > 0 ? Colors.greenAccent : Colors.redAccent;
-
-    return DataRow(
-      cells: [
-        // 1. Portada
-        DataCell(
-          Container(
-            width: 30,
-            height: 45,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(4),
-              color: Colors.grey[800],
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: _construirImagenMini(libro),
-          ),
-        ),
-        // 2. Código
-        DataCell(
-          Text(
-            libro.codigoBarras,
-            style: const TextStyle(color: Colors.white70),
-          ),
-        ),
-        // 3. Título
-        DataCell(
-          SizedBox(
-            width: 250,
-            child: Text(
-              libro.titulo,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w500,
-              ),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ),
-        // 4. Autor
-        DataCell(
-          Text(
-            libro.autor,
-            style: const TextStyle(color: Colors.white70),
-          ),
-        ),
-        // 5. Categoria
-        DataCell(
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-            decoration: BoxDecoration(
-              color: Colors.grey[800],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              libro.categoria,
-              style: const TextStyle(
-                fontSize: 11,
-                color: Colors.white60,
-              ),
-            ),
-          ),
-        ),
-        // 6. Stock
-        DataCell(
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "${libro.copiasDisponibles}",
-                style: TextStyle(
-                  color: colorEstado,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                "/${libro.copias}",
-                style: TextStyle(color: Colors.grey[600]),
-              ),
-            ],
-          ),
-        ),
-        // 7. Estado
-        DataCell(
-          Text(
-            libro.estado,
-            style: const TextStyle(color: Colors.white70),
-          ),
-        ),
-
-        // 8. Acciones (SOLO ADMIN)
-        if (!esDirector)
-          DataCell(
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit, color: Colors.blueAccent, size: 20),
-                  tooltip: "Editar",
-                  onPressed: () {
-                     Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => 
-                          ChangeNotifierProvider(
-                            create: (_) => FormLibroProvider(),
-                            child: AgregarLibroScreen(libroParaEditar: libro),
-                          )
-                        ),
-                      );
-                  },
-                ),
-                IconButton(
-                  icon:
-                      const Icon(Icons.delete, color: Colors.redAccent, size: 20),
-                  tooltip: "Eliminar",
-                  onPressed: () =>
-                      _confirmarBorrado(context, provider, libro),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  @override
-  bool get isRowCountApproximate => false;
-  @override
-  int get rowCount => libros.length;
-  @override
-  int get selectedRowCount => 0;
-
-  Widget _construirImagenMini(Libro l) {
-    if (l.fotoBytes != null && l.fotoBytes!.isNotEmpty) {
-      return Image.memory(l.fotoBytes!, fit: BoxFit.cover);
-    } else if (l.fotoUrl != null && l.fotoUrl!.isNotEmpty) {
-      return Image.network(
-        l.fotoUrl!,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            const Icon(Icons.book, size: 16, color: Colors.white24),
-      );
-    }
-    return const Icon(Icons.book, size: 16, color: Colors.white24);
-  }
-
-  void _confirmarBorrado(
-    BuildContext context,
-    LibrosProvider provider,
-    Libro libro,
-  ) {
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
-          "Confirmar Borrado",
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Text(
-          "¿Realmente deseas eliminar '${libro.titulo}' del sistema?",
-          style: const TextStyle(color: Colors.grey),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text(
-              "Cancelar",
-              style: TextStyle(color: Colors.white60),
-            ),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red[900],
-            ),
-            onPressed: () {
-              provider.borrarLibro(libro.id!);
-              Navigator.pop(context);
-            },
-            child: const Text(
-              "Borrar",
-              style: TextStyle(color: Colors.white),
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.5)
             ),
           ),
         ],

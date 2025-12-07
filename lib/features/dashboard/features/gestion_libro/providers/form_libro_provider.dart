@@ -1,17 +1,20 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-// Import absoluto correcto
+// CORRECCIÓN: Import absoluto para evitar errores de ruta
 import 'package:biblio/core/models/libro.dart';
 
 class FormLibroProvider extends ChangeNotifier {
+  // Llave global para validar el formulario desde los botones
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
+  // --- ESTADO DEL FORMULARIO ---
   Uint8List? _fotoBytes;
   String _estado = 'Bueno';
   String _categoria = 'General';
   bool _isLoading = false;
 
+  // Listas para los Dropdowns
   final List<String> categoriasList = [
     'General', 'Ficción', 'No Ficción', 'Ciencia', 'Historia', 
     'Tecnología', 'Arte', 'Matemáticas', 'Literatura', 
@@ -19,15 +22,25 @@ class FormLibroProvider extends ChangeNotifier {
     'Idiomas', 'Religión', 'Otro'
   ];
 
+  final List<String> estadosList = ['Bueno', 'Regular', 'Malo'];
+
+  // --- GETTERS ---
   Uint8List? get fotoBytes => _fotoBytes;
   String get estado => _estado;
   String get categoria => _categoria;
   bool get isLoading => _isLoading;
 
+  // --- INICIALIZACIÓN ---
   void initData(Libro? libro) {
     if (libro != null) {
       _fotoBytes = libro.fotoBytes;
-      _estado = libro.estado;
+      
+      if (estadosList.contains(libro.estado)) {
+        _estado = libro.estado;
+      } else {
+        _estado = 'Bueno';
+      }
+
       if (categoriasList.contains(libro.categoria)) {
         _categoria = libro.categoria;
       } else {
@@ -45,8 +58,7 @@ class FormLibroProvider extends ChangeNotifier {
     _isLoading = false;
   }
 
-  // --- SETTERS (Aquí es donde agregas la lógica que faltaba) ---
-
+  // --- SETTERS ---
   void setCategoria(String? val) {
     if (val != null) {
       _categoria = val;
@@ -54,7 +66,6 @@ class FormLibroProvider extends ChangeNotifier {
     }
   }
 
-  // ESTE ES EL QUE FALTABA PARA EL DROPDOWN DE ESTADO
   void setEstado(String? val) {
     if (val != null) {
       _estado = val;
@@ -67,19 +78,27 @@ class FormLibroProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- LÓGICA DE FOTOS ---
+  // --- MANEJO DE IMÁGENES ---
   Future<void> seleccionarFoto() async {
     try {
       final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-      
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 600, 
+        imageQuality: 80,
+      );
+
       if (image != null) {
-        final bytes = await image.readAsBytes();
-        _fotoBytes = bytes;
+        _fotoBytes = await image.readAsBytes();
         notifyListeners();
       }
     } catch (e) {
       debugPrint("Error seleccionando foto: $e");
     }
+  }
+
+  void eliminarFoto() {
+    _fotoBytes = null;
+    notifyListeners();
   }
 }
