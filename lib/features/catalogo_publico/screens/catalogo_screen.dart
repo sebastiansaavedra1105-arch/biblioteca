@@ -7,7 +7,9 @@ import 'package:biblio/features/catalogo_publico/widgets/catalogo_header.dart';
 import 'package:biblio/features/catalogo_publico/widgets/libro_publico_card.dart';
 import 'package:biblio/features/auth/screens/login_screen.dart';
 
-// 🔥 CAMBIO 1: Ahora es StatefulWidget para tener "Ciclo de Vida"
+// 🔥 IMPORTANTE: Importamos el Dialog de Acerca De
+import 'package:biblio/core/widgets/acerca_de_dialog.dart';
+
 class CatalogoScreen extends StatefulWidget {
   const CatalogoScreen({super.key});
 
@@ -17,11 +19,9 @@ class CatalogoScreen extends StatefulWidget {
 
 class _CatalogoScreenState extends State<CatalogoScreen> {
   
-  // 🔥 CAMBIO 2: Esto se ejecuta CADA VEZ que esta pantalla se construye (al abrir la app o volver del login)
   @override
   void initState() {
     super.initState();
-    // Usamos addPostFrameCallback para asegurar que el widget esté listo antes de pedir datos
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CatalogoProvider>().cargarCatalogo();
     });
@@ -38,8 +38,9 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true, // Centramos el título para que se vea elegante
         title: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min, // Para que se centre bien
           children: [
             Icon(Icons.local_library, color: colorDorado, size: 28),
             const SizedBox(width: 10),
@@ -47,22 +48,36 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
           ],
         ),
         actions: [
+          // 🔥 NUEVO BOTÓN: ACERCA DE (CRÉDITOS)
+          // Lo ponemos antes del Login para que sea visible pero secundario
           IconButton(
-            icon: const Icon(Icons.login, color: Colors.white),
+            icon: Icon(Icons.info_outline, color: colorDorado), // Icono dorado
+            tooltip: 'Acerca del Equipo',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (_) => const AcercaDeDialog(),
+              );
+            },
+          ),
+
+          // BOTÓN LOGIN EXISTENTE
+          IconButton(
+            icon: const Icon(Icons.login, color: Colors.white), // Blanco para diferenciar
             tooltip: 'Acceso Administrativo',
             onPressed: () {
-              // Navegamos al login. El .then se ejecuta cuando regresas.
               Navigator.push(
                 context, 
                 MaterialPageRoute(builder: (_) => const LoginScreen())
               ).then((_) {
-                // 🔥 CAMBIO 3: Doble seguridad. Si vuelven con "Atrás", recargamos.
                 if (mounted) {
                   context.read<CatalogoProvider>().cargarCatalogo();
                 }
               });
             },
-          )
+          ),
+          
+          const SizedBox(width: 10), // Un pequeño margen a la derecha
         ],
       ),
 
@@ -81,7 +96,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                   return Center(child: CircularProgressIndicator(color: colorDorado));
                 }
 
-                // Estado: Vacío (con opción de recargar deslizando)
+                // Estado: Vacío
                 if (provider.libros.isEmpty) {
                   return RefreshIndicator(
                     onRefresh: () async => await provider.cargarCatalogo(),
@@ -114,7 +129,7 @@ class _CatalogoScreenState extends State<CatalogoScreen> {
                   backgroundColor: Colors.grey[900],
                   child: GridView.builder(
                     padding: const EdgeInsets.all(16),
-                    physics: const AlwaysScrollableScrollPhysics(), // Permite scroll/refresh aunque haya pocos items
+                    physics: const AlwaysScrollableScrollPhysics(),
                     gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                       maxCrossAxisExtent: 180, 
                       childAspectRatio: 0.55, 
