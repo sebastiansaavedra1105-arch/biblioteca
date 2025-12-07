@@ -14,6 +14,9 @@ import 'package:biblio/features/prestamos/screens/nuevo_prestamo_screen.dart';
 import 'package:biblio/features/prestamos/screens/registrar_devolucion_screen.dart';
 import 'package:biblio/features/auth/providers/auth_provider.dart';
 
+// IMPORT IMPORTANTE: El cerebro del formulario
+import 'package:biblio/features/dashboard/features/gestion_libro/providers/form_libro_provider.dart';
+
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -33,21 +36,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     'INVENTARIO COMPLETO'
   ];
 
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<LibrosProvider>().cargarEstadisticas();
-    });
-  }
-
   void _onNavTap(int index) {
-    setState(() => _selectedIndex = index);
-    
-    if (index == 0 || index == 4) {
-      context.read<LibrosProvider>().cargarEstadisticas();
-      context.read<LibrosProvider>().cargarLibros();
-    }
+    setState(() {
+      _selectedIndex = index;
+    });
   }
 
   void _cerrarSesion() {
@@ -56,12 +48,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Definimos las vistas e inyectamos el Provider necesario para AgregarLibro
     final List<Widget> vistas = [
       const ResumenStatsScreen(),        // 0
       const NuevoPrestamoScreen(),       // 1
       const RegistrarDevolucionScreen(), // 2
       const GestionAlumnosScreen(),      // 3
-      const AgregarLibroScreen(),        // 4
+      
+      // --- AQUÍ ESTÁ LA MAGIA ---
+      // Envolvemos la pantalla con su Provider para que no de error
+      ChangeNotifierProvider(
+        create: (_) => FormLibroProvider(),
+        child: const AgregarLibroScreen(),
+      ), 
+      // --------------------------
+      
       const InventarioScreen(),          // 5
     ];
 
@@ -69,13 +70,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
       appBar: AppBar(
         title: Text(_titulos[_selectedIndex]),
         actions: [
+          // Botón Refrescar
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: "Actualizar datos",
             onPressed: () {
+               // Recargamos datos generales
                context.read<LibrosProvider>().cargarTodo();
             },
           ),
+          // Menú de opciones (Logout)
           PopupMenuButton<String>(
             onSelected: (v) => v == 'logout' ? _cerrarSesion() : null,
             itemBuilder: (context) => [

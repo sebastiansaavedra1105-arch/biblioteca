@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-// 👇 CORRECCIÓN: Import absoluto
+// Import absoluto correcto
 import 'package:biblio/core/models/libro.dart';
 
 class FormLibroProvider extends ChangeNotifier {
@@ -45,9 +45,19 @@ class FormLibroProvider extends ChangeNotifier {
     _isLoading = false;
   }
 
+  // --- SETTERS (Aquí es donde agregas la lógica que faltaba) ---
+
   void setCategoria(String? val) {
     if (val != null) {
       _categoria = val;
+      notifyListeners();
+    }
+  }
+
+  // ESTE ES EL QUE FALTABA PARA EL DROPDOWN DE ESTADO
+  void setEstado(String? val) {
+    if (val != null) {
+      _estado = val;
       notifyListeners();
     }
   }
@@ -57,19 +67,19 @@ class FormLibroProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- LÓGICA DE FOTOS ---
   Future<void> seleccionarFoto() async {
-    final file = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 30,
-      maxWidth: 600,
-    );
-    if (file != null) {
-      _fotoBytes = await file.readAsBytes();
-      notifyListeners();
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+      
+      if (image != null) {
+        final bytes = await image.readAsBytes();
+        _fotoBytes = bytes;
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint("Error seleccionando foto: $e");
     }
-  }
-
-  bool validarFormulario() {
-    return formKey.currentState?.validate() ?? false;
   }
 }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// 👇 CORRECCIÓN: Imports absolutos
+// Imports absolutos
 import 'package:biblio/core/models/libro.dart';
 import 'package:biblio/features/dashboard/features/gestion_libro/providers/form_libro_provider.dart';
 import 'package:biblio/features/dashboard/features/gestion_libro/widgets/libro_image_picker.dart';
@@ -18,12 +18,14 @@ class AgregarLibroScreen extends StatefulWidget {
 }
 
 class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
+  // Controladores
   late TextEditingController _codCtrl;
   late TextEditingController _titCtrl;
   late TextEditingController _autCtrl;
   late TextEditingController _editCtrl;
   late TextEditingController _anioCtrl;
   late TextEditingController _copCtrl;
+  late TextEditingController _obsCtrl; // <--- NUEVO
 
   @override
   void initState() {
@@ -36,6 +38,12 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
     _editCtrl = TextEditingController(text: l?.editorial ?? '');
     _anioCtrl = TextEditingController(text: l?.anio.toString() ?? '');
     _copCtrl = TextEditingController(text: l?.copias.toString() ?? '1');
+    _obsCtrl = TextEditingController(text: l?.observacion ?? ''); // <--- NUEVO
+    
+    // Inicializamos provider (Categoría, Estado, Foto)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<FormLibroProvider>().initData(l);
+    });
   }
 
   @override
@@ -46,61 +54,65 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
     _editCtrl.dispose();
     _anioCtrl.dispose();
     _copCtrl.dispose();
+    _obsCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final formProvider = context.watch<FormLibroProvider>();
     final esEdicion = widget.libroParaEditar != null;
 
-    return ChangeNotifierProvider(
-      create: (_) => FormLibroProvider()..initData(widget.libroParaEditar),
-      child: Scaffold(
-        appBar: AppBar(title: Text(esEdicion ? "Editar Libro" : "Nuevo Libro")),
-        body: Consumer<FormLibroProvider>(
-          builder: (context, formProvider, _) {
-            return SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Form(
-                key: formProvider.formKey,
-                child: Column(
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: Text(esEdicion ? "Editar Libro" : "Nuevo Libro"),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Form(
+            key: formProvider.formKey,
+            child: Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const LibroImagePicker(),
-                        const SizedBox(width: 15),
-                        Expanded(
-                          child: LibroFormInputs(
-                            codCtrl: _codCtrl,
-                            titCtrl: _titCtrl,
-                            autCtrl: _autCtrl,
-                            editCtrl: _editCtrl,
-                            anioCtrl: _anioCtrl,
-                            copCtrl: _copCtrl,
-                            onCodigoGenerado: () => setState((){}), 
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 30),
-
-                    LibroActionButtons(
-                      esEdicion: esEdicion,
-                      libroOriginal: widget.libroParaEditar,
-                      codCtrl: _codCtrl,
-                      titCtrl: _titCtrl,
-                      autCtrl: _autCtrl,
-                      editCtrl: _editCtrl,
-                      anioCtrl: _anioCtrl,
-                      copCtrl: _copCtrl,
+                    const LibroImagePicker(),
+                    const SizedBox(width: 15),
+                    Expanded(
+                      child: LibroFormInputs(
+                        codCtrl: _codCtrl,
+                        titCtrl: _titCtrl,
+                        autCtrl: _autCtrl,
+                        editCtrl: _editCtrl,
+                        anioCtrl: _anioCtrl,
+                        copCtrl: _copCtrl,
+                        obsCtrl: _obsCtrl, // <--- Conectado
+                        onCodigoGenerado: () => setState((){}), 
+                      ),
                     ),
                   ],
                 ),
-              ),
-            );
-          },
+
+                const SizedBox(height: 30),
+
+                LibroActionButtons(
+                  esEdicion: esEdicion,
+                  libroOriginal: widget.libroParaEditar,
+                  codCtrl: _codCtrl,
+                  titCtrl: _titCtrl,
+                  autCtrl: _autCtrl,
+                  editCtrl: _editCtrl,
+                  anioCtrl: _anioCtrl,
+                  copCtrl: _copCtrl,
+                  obsCtrl: _obsCtrl, // <--- Enviamos al botón de guardar
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

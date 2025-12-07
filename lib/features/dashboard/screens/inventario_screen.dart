@@ -5,6 +5,7 @@ import 'package:biblio/core/models/libro.dart';
 import 'package:biblio/features/dashboard/providers/libros_provider.dart';
 import 'package:biblio/features/dashboard/features/gestion_libro/screens/agregar_libro_screen.dart';
 import 'package:biblio/features/auth/providers/auth_provider.dart';
+import 'package:biblio/features/dashboard/features/gestion_libro/providers/form_libro_provider.dart';
 
 class InventarioScreen extends StatefulWidget {
   const InventarioScreen({super.key});
@@ -101,13 +102,16 @@ class _InventarioScreenState extends State<InventarioScreen> {
                 const SizedBox(width: 16),
 
                 // Botón "Nuevo Libro" (SOLO ADMIN)
-                if (!esDirector)
+               if (!esDirector)
                   ElevatedButton.icon(
                     onPressed: () {
-                      Navigator.push(
+                       Navigator.push(
                         context,
-                        MaterialPageRoute(
-                          builder: (_) => const AgregarLibroScreen(),
+                        MaterialPageRoute(builder: (_) => 
+                          ChangeNotifierProvider(
+                            create: (_) => FormLibroProvider(),
+                            child: const AgregarLibroScreen(),
+                          )
                         ),
                       );
                     },
@@ -355,13 +359,15 @@ class _LibrosDataSource extends DataTableSource {
                   icon: const Icon(Icons.edit, color: Colors.blueAccent, size: 20),
                   tooltip: "Editar",
                   onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            AgregarLibroScreen(libroParaEditar: libro),
-                      ),
-                    );
+                     Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => 
+                          ChangeNotifierProvider(
+                            create: (_) => FormLibroProvider(),
+                            child: AgregarLibroScreen(libroParaEditar: libro),
+                          )
+                        ),
+                      );
                   },
                 ),
                 IconButton(

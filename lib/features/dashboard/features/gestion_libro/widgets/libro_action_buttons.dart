@@ -2,9 +2,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// Imports para PDF
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
+// Imports para PDF y Códigos de Barras
+// Nota: Eliminamos 'package:pdf/pdf.dart' porque no se usaba directamente y causaba advertencia.
+import 'package:pdf/widgets.dart' as pw; 
 import 'package:printing/printing.dart';
 
 // Imports Locales
@@ -16,12 +16,14 @@ class LibroActionButtons extends StatelessWidget {
   final bool esEdicion;
   final Libro? libroOriginal;
   
+  // Controladores
   final TextEditingController codCtrl;
   final TextEditingController titCtrl;
   final TextEditingController autCtrl;
   final TextEditingController editCtrl;
   final TextEditingController anioCtrl;
   final TextEditingController copCtrl;
+  final TextEditingController obsCtrl; // Controlador de Observaciones
 
   const LibroActionButtons({
     super.key,
@@ -33,192 +35,220 @@ class LibroActionButtons extends StatelessWidget {
     required this.editCtrl,
     required this.anioCtrl,
     required this.copCtrl,
+    required this.obsCtrl, // Recibido correctamente
   });
 
   @override
   Widget build(BuildContext context) {
-    final formProvider = context.watch<FormLibroProvider>();
-    final globalProvider = context.read<LibrosProvider>();
+    final formP = context.watch<FormLibroProvider>();
+    final globalP = context.read<LibrosProvider>();
     final dorado = Theme.of(context).colorScheme.primary;
 
     return Column(
       children: [
-        // 1. BOTÓN IMPRIMIR ETIQUETA (Solo si hay código escrito)
-        if (codCtrl.text.isNotEmpty) ...[
-          SizedBox(
-            width: double.infinity, 
-            height: 50,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue[800], 
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
-              ),
-              icon: const Icon(Icons.print),
-              label: const Text("IMPRIMIR CÓDIGO DE BARRAS (PDF)"),
-              onPressed: () => _imprimirEtiqueta(context),
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-
-        // 2. BOTÓN GUARDAR
+        // 1. BOTÓN GUARDAR PRINCIPAL
         SizedBox(
-          width: double.infinity, height: 50,
-          child: ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: dorado, foregroundColor: Colors.black),
-            onPressed: formProvider.isLoading 
-              ? null 
-              : () => _guardar(context, formProvider, globalProvider),
-            child: Text(formProvider.isLoading ? "Procesando..." : "GUARDAR LIBRO"),
+          width: double.infinity,
+          height: 55,
+          child: ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: dorado,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 4,
+            ),
+            icon: formP.isLoading 
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black))
+                : const Icon(Icons.save_outlined, size: 28),
+            label: Text(
+              formP.isLoading ? "Procesando..." : (esEdicion ? "Actualizar Libro" : "Guardar Libro"),
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            onPressed: formP.isLoading ? null : () => _guardar(context, formP, globalP),
           ),
         ),
+        
+        const SizedBox(height: 20),
 
-        // 3. BOTÓN IMPORTAR CSV (Solo si es nuevo)
+        // 2. BOTONES SECUNDARIOS (Solo en modo registro nuevo para evitar desorden en edición)
         if (!esEdicion) ...[
-          const SizedBox(height: 30),
-          const Row(children: [Expanded(child: Divider(color: Colors.grey)), Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text("O", style: TextStyle(color: Colors.grey))), Expanded(child: Divider(color: Colors.grey))]),
-          const SizedBox(height: 20),
-          
-          SizedBox(
-            width: double.infinity, height: 50,
-            child: OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.green),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _importar(context, globalP),
+                  icon: const Icon(Icons.upload_file, color: Colors.white70),
+                  label: const Text("Importar CSV", style: TextStyle(color: Colors.white70)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    side: const BorderSide(color: Colors.white24),
+                  ),
+                ),
               ),
-              icon: const Icon(Icons.file_upload, color: Colors.green),
-              label: const Text("CARGAR DESDE EXCEL (CSV)"),
-              onPressed: formProvider.isLoading 
-                ? null 
-                : () => _importar(context, globalProvider),
-            ),
+              const SizedBox(width: 15),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _imprimirCodigos(context, globalP),
+                  icon: const Icon(Icons.print, color: Colors.white70),
+                  label: const Text("Imprimir Códigos", style: TextStyle(color: Colors.white70)),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    side: const BorderSide(color: Colors.white24),
+                  ),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 10),
-          const Text("Formato: CSV UTF-8 separado por comas", style: TextStyle(color: Colors.grey, fontSize: 10)),
         ]
       ],
     );
   }
 
-  // --- LÓGICA DE GENERACIÓN DE PDF ---
-  Future<void> _imprimirEtiqueta(BuildContext context) async {
-    final doc = pw.Document();
-    
-    // Datos actuales de los campos
-    final codigo = codCtrl.text;
-    final titulo = titCtrl.text.isEmpty ? "Sin Título" : titCtrl.text;
-    final autor = autCtrl.text.isEmpty ? "Autor Desconocido" : autCtrl.text;
-
-    // Diseñamos la etiqueta en el PDF
-    doc.addPage(
-      pw.Page(
-        pageFormat: PdfPageFormat.a4, // Formato A4 estándar
-        build: (pw.Context context) {
-          return pw.Center(
-            child: pw.Column(
-              mainAxisAlignment: pw.MainAxisAlignment.center,
-              children: [
-                pw.Text("PROPIEDAD DE LA BIBLIOTECA", style: const pw.TextStyle(fontSize: 10)),
-                pw.SizedBox(height: 10),
-                
-                // El Código de Barras
-                pw.BarcodeWidget(
-                  barcode: pw.Barcode.code128(),
-                  data: codigo,
-                  width: 200,
-                  height: 80,
-                ),
-                pw.SizedBox(height: 5),
-                pw.Text(codigo, style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
-                
-                pw.SizedBox(height: 10),
-                pw.Text(titulo, style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
-                pw.Text(autor, style: const pw.TextStyle(fontSize: 12)),
-                
-                pw.SizedBox(height: 20),
-                pw.Text("Recortar y pegar en el libro", style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
-                
-                // Dibuja una línea de corte
-                pw.SizedBox(height: 5),
-                pw.Container(
-                  width: 250, 
-                  height: 150, 
-                  decoration: pw.BoxDecoration(
-                    border: pw.Border.all(color: PdfColors.black, style: pw.BorderStyle.dashed)
-                  )
-                )
-              ],
-            ),
-          );
-        },
-      ),
-    );
-
-    // Abre la vista previa de impresión nativa
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => doc.save(),
-    );
-  }
-
+  // --- LÓGICA DE GUARDADO ---
   Future<void> _guardar(BuildContext context, FormLibroProvider formP, LibrosProvider globalP) async {
-    if (!formP.validarFormulario()) return;
-
-    formP.setLoading(true);
-
-    final nuevoLibro = Libro(
-      id: libroOriginal?.id,
-      codigoBarras: codCtrl.text.trim(),
-      titulo: titCtrl.text.trim(),
-      autor: autCtrl.text.isEmpty ? 'Anónimo' : autCtrl.text.trim(),
-      isbn: '',
-      anio: int.tryParse(anioCtrl.text) ?? DateTime.now().year,
-      editorial: editCtrl.text.trim(),
-      categoria: formP.categoria,
-      copias: int.parse(copCtrl.text),
-      copiasDisponibles: esEdicion 
-          ? libroOriginal!.copiasDisponibles 
-          : int.parse(copCtrl.text),
-      estado: formP.estado,
-      observacion: '',
-      fotoBytes: formP.fotoBytes,
-      fotoUrl: libroOriginal?.fotoUrl,
-    );
-
-    bool exito;
-    if (esEdicion) {
-      exito = await globalP.editarLibro(nuevoLibro);
-    } else {
-      exito = await globalP.agregarLibro(nuevoLibro);
+    // 1. Validar formulario visualmente
+    if (!formP.formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("⚠️ Revisa los campos marcados en rojo"), backgroundColor: Colors.orange)
+      );
+      return;
     }
 
-    formP.setLoading(false);
+    // 2. Bloquear botón
+    formP.setLoading(true);
 
-    if (context.mounted && exito) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("✅ Operación exitosa"), backgroundColor: Colors.green));
+    try {
+      // 3. Construir el objeto Libro limpio y validado
+      final nuevoLibro = Libro(
+        id: esEdicion ? libroOriginal!.id : null,
+        codigoBarras: codCtrl.text.trim(),
+        titulo: titCtrl.text.trim(),
+        autor: autCtrl.text.trim(),
+        isbn: '', 
+        anio: int.tryParse(anioCtrl.text) ?? DateTime.now().year,
+        editorial: editCtrl.text.trim(),
+        categoria: formP.categoria,
+        copias: int.parse(copCtrl.text),
+        copiasDisponibles: esEdicion 
+            ? libroOriginal!.copiasDisponibles 
+            : int.parse(copCtrl.text), 
+        estado: formP.estado, 
+        observacion: obsCtrl.text.trim(), // Guardamos la observación
+        fotoBytes: formP.fotoBytes,
+        fotoUrl: libroOriginal?.fotoUrl,
+      );
+
+      // 4. Enviar a la base de datos
+      bool exito;
       if (esEdicion) {
-        Navigator.pop(context);
+        exito = await globalP.editarLibro(nuevoLibro);
       } else {
-        codCtrl.clear();
-        titCtrl.clear();
-        autCtrl.clear();
-        editCtrl.clear();
-        anioCtrl.clear();
-        copCtrl.text = '1';
-        formP.initData(null); 
+        exito = await globalP.agregarLibro(nuevoLibro);
+      }
+
+      formP.setLoading(false);
+
+      if (context.mounted && exito) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(esEdicion ? "✅ Libro actualizado correctamente" : "✅ Libro guardado exitosamente"),
+            backgroundColor: Colors.green[800],
+            behavior: SnackBarBehavior.floating,
+          )
+        );
+
+        if (esEdicion) {
+          Navigator.pop(context);
+        } else {
+          // Limpiar campos
+          codCtrl.clear();
+          titCtrl.clear();
+          autCtrl.clear();
+          editCtrl.clear();
+          anioCtrl.clear();
+          copCtrl.text = '1';
+          obsCtrl.clear();
+          formP.initData(null); 
+        }
+      }
+    } catch (e) {
+      formP.setLoading(false);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("❌ Error: $e"), backgroundColor: Colors.red)
+        );
       }
     }
   }
 
+  // --- LÓGICA DE IMPORTACIÓN ---
   Future<void> _importar(BuildContext context, LibrosProvider globalP) async {
     final msg = await globalP.importarLibrosDesdeCSV();
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(msg),
-          backgroundColor: msg.contains("Error") || msg.contains("Cancelado") ? Colors.grey : Colors.green,
-        )
-      );
+    
+    // CORRECCIÓN LINTER: Quitamos '&& msg != null' porque msg siempre es String
+    if (context.mounted && msg.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
     }
+  }
+
+  // --- LÓGICA DE IMPRESIÓN (MEJORADA PARA ETIQUETAS REALES) ---
+  Future<void> _imprimirCodigos(BuildContext context, LibrosProvider globalP) async {
+    final libros = globalP.libros;
+    if (libros.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("No hay libros para imprimir")));
+      return;
+    }
+
+    await Printing.layoutPdf(
+      onLayout: (format) async {
+        final doc = pw.Document();
+        
+        // Creamos una lista de etiquetas
+        doc.addPage(
+          pw.MultiPage(
+            pageFormat: format,
+            build: (pw.Context context) {
+              return [
+                pw.Wrap(
+                  spacing: 20,
+                  runSpacing: 20,
+                  children: libros.map((l) {
+                    // CADA ETIQUETA
+                    return pw.Container(
+                      width: 180,
+                      height: 80,
+                      padding: const pw.EdgeInsets.all(5),
+                      decoration: pw.BoxDecoration(border: pw.Border.all()),
+                      child: pw.Column(
+                        mainAxisAlignment: pw.MainAxisAlignment.center,
+                        children: [
+                          // Título truncado
+                          pw.Text(
+                            l.titulo.length > 25 ? "${l.titulo.substring(0, 25)}..." : l.titulo,
+                            style: const pw.TextStyle(fontSize: 8),
+                            textAlign: pw.TextAlign.center
+                          ),
+                          pw.SizedBox(height: 5),
+                          // CÓDIGO DE BARRAS REAL (Escaneable)
+                          pw.BarcodeWidget(
+                            barcode: pw.Barcode.code128(), // Tipo de código estándar
+                            data: l.codigoBarras,
+                            width: 150,
+                            height: 40,
+                            drawText: true,
+                            textStyle: const pw.TextStyle(fontSize: 8)
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                )
+              ];
+            },
+          ),
+        );
+        return doc.save();
+      },
+    );
   }
 }
