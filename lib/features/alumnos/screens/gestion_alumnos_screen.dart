@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/alumnos_provider.dart';
-import '../widgets/alumno_dialog.dart';
+import '../widgets/alumno_dialog.dart'; // Importamos la nueva pantalla (aunque el archivo se llame igual)
 import '../../auth/providers/auth_provider.dart';
 import '../../../core/models/alumno.dart';
 
@@ -30,13 +30,10 @@ class _GestionAlumnosScreenState extends State<GestionAlumnosScreen> {
     final provider = context.watch<AlumnosProvider>();
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    
-    // --- LÓGICA DE PERMISOS ---
-    // Obtenemos el rol para saber si ocultar botones
     final authProvider = context.read<AuthProvider>();
-    final bool esDirector = authProvider.esDirector; // TRUE si es Director (Solo Lectura)
+    final bool esSoloLectura = authProvider.esDirector; 
 
-    // Filtro en memoria
+    // Filtro rápido
     final alumnosFiltrados = provider.alumnos.where((a) {
       final query = _filtro.toLowerCase();
       return a.nombreCompleto.toLowerCase().contains(query) || 
@@ -44,23 +41,13 @@ class _GestionAlumnosScreenState extends State<GestionAlumnosScreen> {
     }).toList();
 
     return Scaffold(
-      // --- APP BAR ---
-      appBar: AppBar(
-        title: Text(
-          "Directorio de Alumnos",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: colorScheme.onSurface, // Se adapta a Claro/Oscuro
-          ),
-        ),
-        centerTitle: false,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        iconTheme: IconThemeData(color: colorScheme.onSurface),
-      ),
+      // NO HAY APPBAR NI HEADER GIGANTE AQUÍ (El título lo pone el dashboard padre)
       
       body: Column(
         children: [
+          // Espacio superior para separar del header del dashboard
+          const SizedBox(height: 20),
+
           // --- BUSCADOR ---
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -82,7 +69,7 @@ class _GestionAlumnosScreenState extends State<GestionAlumnosScreen> {
                     ) 
                   : null,
                 filled: true,
-                fillColor: theme.cardTheme.color, // Color de tarjeta
+                fillColor: theme.cardTheme.color,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
@@ -116,10 +103,9 @@ class _GestionAlumnosScreenState extends State<GestionAlumnosScreen> {
                         itemCount: alumnosFiltrados.length,
                         itemBuilder: (context, index) {
                           final alumno = alumnosFiltrados[index];
-                          // Usamos el Widget extraído abajo para mantener el código organizado
                           return _AlumnoCard(
                             alumno: alumno,
-                            esDirector: esDirector, // Pasamos el permiso
+                            esSoloLectura: esSoloLectura,
                           );
                         },
                       ),
@@ -128,12 +114,13 @@ class _GestionAlumnosScreenState extends State<GestionAlumnosScreen> {
       ),
 
       // --- BOTÓN FLOTANTE (Solo si NO es director) ---
-      floatingActionButton: esDirector 
-          ? null // Oculto para Director
+      floatingActionButton: esSoloLectura 
+          ? null 
           : FloatingActionButton.extended(
-              onPressed: () => showDialog(
-                context: context, 
-                builder: (_) => const AlumnoDialog()
+              // NAVEGAMOS A LA PANTALLA COMPLETA
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AgregarAlumnoScreen())
               ),
               backgroundColor: colorScheme.primary,
               foregroundColor: Colors.white,
@@ -145,15 +132,15 @@ class _GestionAlumnosScreenState extends State<GestionAlumnosScreen> {
 }
 
 // --------------------------------------------------------------------------
-// WIDGET INTERNO: TARJETA DE ALUMNO (Con lógica de borrado y permisos)
+// TARJETA DE ALUMNO
 // --------------------------------------------------------------------------
 class _AlumnoCard extends StatelessWidget {
   final Alumno alumno;
-  final bool esDirector;
+  final bool esSoloLectura;
 
   const _AlumnoCard({
     required this.alumno,
-    required this.esDirector,
+    required this.esSoloLectura,
   });
 
   @override
@@ -166,7 +153,7 @@ class _AlumnoCard extends StatelessWidget {
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: theme.cardTheme.color, // Color dinámico
+      color: theme.cardTheme.color,
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         
@@ -179,7 +166,7 @@ class _AlumnoCard extends StatelessWidget {
           ),
         ),
         
-        // DATOS PRINCIPALES
+        // DATOS
         title: Text(
           alumno.nombreCompleto,
           style: textTheme.titleMedium?.copyWith(
@@ -208,7 +195,6 @@ class _AlumnoCard extends StatelessWidget {
                 ),
               ],
             ),
-            // Si está vetado, mostrar alerta
             if (alumno.vetadoHasta != null && alumno.vetadoHasta!.isAfter(DateTime.now()))
               Padding(
                 padding: const EdgeInsets.only(top: 4.0),
@@ -220,17 +206,20 @@ class _AlumnoCard extends StatelessWidget {
           ],
         ),
 
-        // --- MENÚ DE ACCIONES (Solo si NO es Director) ---
-        trailing: esDirector 
-            ? null // Si es director, no mostramos nada
+        // MENÚ DE ACCIONES
+        trailing: esSoloLectura 
+            ? null 
             : PopupMenuButton<String>(
                 icon: Icon(Icons.more_vert, color: colorScheme.onSurface.withOpacity(0.6)),
                 color: colorScheme.surface,
                 onSelected: (value) {
                   if (value == 'editar') {
-                    showDialog(
-                      context: context,
-                      builder: (_) => AlumnoDialog(alumno: alumno),
+                    // NAVEGAMOS A LA PANTALLA DE EDICIÓN
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AgregarAlumnoScreen(alumno: alumno)
+                      )
                     );
                   } else if (value == 'eliminar') {
                     _confirmarEliminacion(context);
@@ -263,11 +252,9 @@ class _AlumnoCard extends StatelessWidget {
     );
   }
 
-  // --- LÓGICA DE BORRADO ---
   void _confirmarEliminacion(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final messenger = ScaffoldMessenger.of(context); // Guardamos referencia
+    final colorScheme = Theme.of(context).colorScheme;
+    final messenger = ScaffoldMessenger.of(context);
 
     showDialog(
       context: context,
@@ -275,7 +262,7 @@ class _AlumnoCard extends StatelessWidget {
         backgroundColor: colorScheme.surface,
         title: Text("Confirmar Eliminación", style: TextStyle(color: colorScheme.onSurface)),
         content: Text(
-          "¿Estás seguro de eliminar a ${alumno.nombreCompleto}?\nEsta acción es irreversible.",
+          "¿Estás seguro de eliminar a ${alumno.nombreCompleto}?",
           style: TextStyle(color: colorScheme.onSurface.withOpacity(0.7)),
         ),
         actions: [
@@ -286,12 +273,10 @@ class _AlumnoCard extends StatelessWidget {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: colorScheme.error),
             onPressed: () async {
-              Navigator.pop(ctx); // Cerrar diálogo primero
+              Navigator.pop(ctx);
               
-              // Ejecutar lógica
               final resultado = await context.read<AlumnosProvider>().borrarAlumno(alumno.id!);
               
-              // Verificar si el widget sigue montado antes de usar context
               if (context.mounted) {
                 if (resultado['success']) {
                   messenger.showSnackBar(
@@ -301,7 +286,6 @@ class _AlumnoCard extends StatelessWidget {
                     )
                   );
                 } else {
-                  // Mostrar alerta de bloqueo (si tiene libros prestados)
                   _mostrarAlertaBloqueo(context, resultado['message']);
                 }
               }
@@ -313,10 +297,8 @@ class _AlumnoCard extends StatelessWidget {
     );
   }
 
-  // --- DIÁLOGO DE BLOQUEO (Si tiene libros pendientes) ---
   void _mostrarAlertaBloqueo(BuildContext context, String mensaje) {
     final colorScheme = Theme.of(context).colorScheme;
-    
     showDialog(
       context: context,
       builder: (_) => AlertDialog(

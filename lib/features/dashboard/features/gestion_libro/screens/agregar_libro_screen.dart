@@ -2,7 +2,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-// Imports absolutos
 import 'package:biblio/core/models/libro.dart';
 import 'package:biblio/features/dashboard/features/gestion_libro/providers/form_libro_provider.dart';
 import 'package:biblio/features/dashboard/features/gestion_libro/widgets/libro_image_picker.dart';
@@ -19,7 +18,6 @@ class AgregarLibroScreen extends StatefulWidget {
 }
 
 class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
-  // Controladores
   late TextEditingController _codCtrl;
   late TextEditingController _titCtrl;
   late TextEditingController _autCtrl;
@@ -41,7 +39,6 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
     _copCtrl = TextEditingController(text: l?.copias.toString() ?? '1');
     _obsCtrl = TextEditingController(text: l?.observacion ?? '');
 
-    // Inicializar el Provider con los datos del libro (si es edición)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<FormLibroProvider>().initData(l);
     });
@@ -74,13 +71,11 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      // CORRECCIÓN: Solo mostramos AppBar si estamos EDITANDO (para tener botón 'Atrás').
-      // Si estamos AGREGANDO, usamos el título del Dashboard y ocultamos este para no duplicar.
       appBar: esEdicion 
           ? AppBar(title: const Text("Editar Libro"), elevation: 0) 
           : null, 
       
-      backgroundColor: theme.scaffoldBackgroundColor, // Mantiene coherencia de color
+      backgroundColor: theme.scaffoldBackgroundColor,
       
       body: SingleChildScrollView(
         child: Padding(
@@ -90,18 +85,6 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Texto instructivo (Solo si es nuevo, para llenar el espacio visual)
-                if (!esEdicion) ...[
-                  Text(
-                    "Complete la ficha técnica del material bibliográfico.",
-                    style: theme.textTheme.bodyMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withOpacity(0.6)
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                ],
-
-                // SECCIÓN SUPERIOR: FOTO E INPUTS PRINCIPALES
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -126,7 +109,6 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
                 Divider(color: theme.colorScheme.onSurface.withOpacity(0.1)),
                 const SizedBox(height: 20),
 
-                // BOTONES DE ACCIÓN
                 LibroActionButtons(
                   esEdicion: esEdicion,
                   libroOriginal: widget.libroParaEditar,
@@ -139,7 +121,6 @@ class _AgregarLibroScreenState extends State<AgregarLibroScreen> {
                   obsCtrl: _obsCtrl,
                 ),
                 
-                // Espacio extra al final para que no tape el botón flotante si hubiera
                 const SizedBox(height: 80),
               ],
             ),

@@ -3,14 +3,14 @@ import 'package:biblio/core/models/libro.dart';
 
 class InventarioBookItem extends StatelessWidget {
   final Libro libro;
-  final bool esDirector;
+  final bool puedeEditar; // <--- VARIABLE CLAVE: Si es true, muestra botones
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const InventarioBookItem({
     super.key,
     required this.libro,
-    required this.esDirector,
+    required this.puedeEditar,
     required this.onEdit,
     required this.onDelete,
   });
@@ -25,11 +25,12 @@ class InventarioBookItem extends StatelessWidget {
       elevation: 2,
       margin: const EdgeInsets.only(bottom: 12),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: theme.cardTheme.color,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Row(
           children: [
-            // 1. FOTO (Pequeña y optimizada)
+            // 1. FOTO
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: SizedBox(
@@ -51,7 +52,6 @@ class InventarioBookItem extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                     style: textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      fontFamily: 'Playfair Display', // Fuente elegante
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -63,19 +63,19 @@ class InventarioBookItem extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   
-                  // Chips de info (Stock y Código)
+                  // Chips de info
                   Row(
                     children: [
                       _InfoChip(
                         icon: Icons.inventory_2, 
-                        label: "${libro.copiasDisponibles}/${libro.copias}",
-                        color: colorScheme.primary,
+                        label: "${libro.copiasDisponibles}",
+                        color: libro.copiasDisponibles > 0 ? Colors.blue : Colors.red,
                       ),
                       const SizedBox(width: 10),
                       _InfoChip(
                         icon: Icons.qr_code, 
                         label: libro.codigoBarras,
-                        color: colorScheme.secondary,
+                        color: Colors.orange,
                       ),
                     ],
                   )
@@ -83,24 +83,24 @@ class InventarioBookItem extends StatelessWidget {
               ),
             ),
 
-            // 3. BOTONES DE ACCIÓN (Editar / Eliminar)
-            Column(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.edit, size: 20),
-                  color: colorScheme.primary,
-                  tooltip: "Editar",
-                  onPressed: onEdit,
-                ),
-                if (esDirector) // Solo el director puede borrar
+            // 3. ACCIONES (Solo si puedeEditar es true)
+            if (puedeEditar)
+              Column(
+                children: [
                   IconButton(
-                    icon: const Icon(Icons.delete, size: 20),
-                    color: colorScheme.error, // Rojo Vino
-                    tooltip: "Eliminar",
+                    icon: const Icon(Icons.edit, size: 22),
+                    color: colorScheme.primary,
+                    tooltip: "Editar Libro",
+                    onPressed: onEdit,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.delete, size: 22),
+                    color: colorScheme.error,
+                    tooltip: "Eliminar Libro",
                     onPressed: onDelete,
                   ),
-              ],
-            )
+                ],
+              ),
           ],
         ),
       ),
@@ -128,7 +128,6 @@ class InventarioBookItem extends StatelessWidget {
   }
 }
 
-// Widget auxiliar pequeño para los datos
 class _InfoChip extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -139,18 +138,19 @@ class _InfoChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3), width: 0.5)
       ),
       child: Row(
         children: [
-          Icon(icon, size: 12, color: color),
+          Icon(icon, size: 10, color: color),
           const SizedBox(width: 4),
           Text(
             label, 
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color)
+            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)
           ),
         ],
       ),

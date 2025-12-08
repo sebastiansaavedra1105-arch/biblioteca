@@ -2,12 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 
+// Modelos y Providers
 import '../../../core/models/libro.dart';
 import '../../../core/models/alumno.dart';
 import '../../dashboard/providers/libros_provider.dart';
 import '../../alumnos/providers/alumnos_provider.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../providers/prestamos_provider.dart';
 
+// Widgets
 import '../widgets/prestamo_search_field.dart';
 import '../widgets/seleccion_card.dart';
 
@@ -29,11 +32,14 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
   @override
   void initState() {
     super.initState();
+    // Carga inicial de datos globales (Libros y Alumnos)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<AlumnosProvider>().cargarAlumnos();
+      context.read<LibrosProvider>().cargarTodo();
     });
   }
 
+  // --- LÓGICA DE BÚSQUEDA ---
   void _buscarLibro() {
     final query = _libroCtrl.text.trim().toLowerCase();
     if (query.isEmpty) return;
@@ -45,17 +51,19 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
                l.titulo.toLowerCase().contains(query),
       );
       
-      if (libro.copiasDisponibles <= 0) {
-        _mostrarError("El libro '${libro.titulo}' no tiene copias disponibles.");
-        return;
+      if (libro.copiasDisponibles > 0) {
+        setState(() {
+          _libroSeleccionado = libro;
+          _libroCtrl.clear();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Libro seleccionado: ${libro.titulo}"), backgroundColor: Colors.green)
+        );
+      } else {
+        _mostrarError("El libro '${libro.titulo}' no tiene stock disponible.");
       }
-
-      setState(() {
-        _libroSeleccionado = libro;
-        _libroCtrl.clear();
-      });
     } catch (e) {
-      _mostrarError("No se encontró ningún libro con ese código/título.");
+      _mostrarError("Libro no encontrado. Verifique el código o título.");
     }
   }
 
@@ -71,7 +79,7 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
       );
 
       if (alumno.vetadoHasta != null && alumno.vetadoHasta!.isAfter(DateTime.now())) {
-        _mostrarError("El alumno está vetado.");
+        _mostrarError("ALUMNO VETADO hasta ${DateFormat('dd/MM/yyyy').format(alumno.vetadoHasta!)}");
         return;
       }
 
@@ -84,57 +92,44 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
     }
   }
 
-  Future<void> _procesarPrestamo() async {
-    if (_libroSeleccionado == null || _alumnoSeleccionado == null) {
-      _mostrarError("Debe seleccionar un libro y un alumno.");
-      return;
-    }
+  void _mostrarError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: Colors.red)
+    );
+  }
 
-    final librosProvider = context.read<LibrosProvider>();
-    final authProvider = context.read<AuthProvider>();
-    
-    // AQUÍ YA NO DARÁ ERROR PORQUE ACTUALIZAMOS EL PROVIDER
-    final exito = await librosProvider.registrarPrestamo(
+  // --- PROCESAR PRÉSTAMO ---
+  // Recibimos 'ctx' porque es el contexto que tiene acceso al PrestamosProvider local
+  Future<void> _procesarPrestamo(BuildContext ctx) async {
+    if (_libroSeleccionado == null || _alumnoSeleccionado == null) return;
+
+    // CORRECCIÓN: Acceso a mapa ['id'] en lugar de propiedad .id
+    final usuarioId = ctx.read<AuthProvider>().usuarioActual?['id'] ?? 'admin';
+    final prestamosP = ctx.read<PrestamosProvider>();
+
+    final exito = await prestamosP.registrarPrestamo(
       libro: _libroSeleccionado!,
       alumno: _alumnoSeleccionado!,
       fechaEntrega: _fechaEntrega,
-      usuarioId: authProvider.usuarioActual?['id'] ?? 'admin',
+      usuarioId: usuarioId.toString(),
     );
 
-    if (exito) {
-      if (!mounted) return;
+    if (exito && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar( // Agregado const
-          content: Text("✅ Préstamo registrado con éxito"),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-        )
+        const SnackBar(content: Text("Préstamo registrado exitosamente"), backgroundColor: Colors.green)
       );
       setState(() {
         _libroSeleccionado = null;
         _alumnoSeleccionado = null;
         _fechaEntrega = DateTime.now().add(const Duration(days: 3));
       });
-    } else {
-      _mostrarError(librosProvider.error ?? "Error al registrar préstamo");
-    }
-  }
-
-  void _mostrarError(String msg) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg), backgroundColor: Theme.of(context).colorScheme.error)
-    );
-  }
-
-  Future<void> _seleccionarFecha() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _fechaEntrega,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 30)),
-    );
-    if (picked != null) {
-      setState(() => _fechaEntrega = picked);
+      
+      if (ctx.mounted) {
+        ctx.read<LibrosProvider>().cargarTodo();
+      }
+      
+    } else if (mounted) {
+      _mostrarError(prestamosP.error ?? "Error desconocido");
     }
   }
 
@@ -143,123 +138,193 @@ class _NuevoPrestamoScreenState extends State<NuevoPrestamoScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            "Nuevo Préstamo",
-            style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 20),
-
-          // 1. SELECCIONAR LIBRO
-          const _SectionHeader(title: "1. Seleccionar Libro", icon: Icons.book), // Agregado const
-          if (_libroSeleccionado == null)
-            PrestamoSearchField(
-              label: "Buscar por Código o Título",
-              icon: Icons.qr_code,
-              controller: _libroCtrl,
-              onSearch: _buscarLibro,
-            )
-          else
-            SeleccionCard(
-              titulo: _libroSeleccionado!.titulo,
-              subtitulo: "Copias: ${_libroSeleccionado!.copiasDisponibles}",
-              icon: Icons.menu_book,
-              colorBase: colorScheme.primary,
-              onDelete: () => setState(() => _libroSeleccionado = null),
-            ),
-          
-          const SizedBox(height: 30),
-
-          // 2. SELECCIONAR ALUMNO
-          const _SectionHeader(title: "2. Seleccionar Alumno", icon: Icons.person), // Agregado const
-          if (_alumnoSeleccionado == null)
-            PrestamoSearchField(
-              label: "Buscar por DNI o Nombre",
-              icon: Icons.badge,
-              controller: _alumnoCtrl,
-              onSearch: _buscarAlumno,
-            )
-          else
-            SeleccionCard(
-              titulo: _alumnoSeleccionado!.nombreCompleto,
-              subtitulo: _alumnoSeleccionado!.codigo,
-              icon: Icons.person,
-              colorBase: Colors.blue,
-              onDelete: () => setState(() => _alumnoSeleccionado = null),
-            ),
-
-          const SizedBox(height: 30),
-
-          // 3. FECHA
-          const _SectionHeader(title: "3. Fecha de Entrega", icon: Icons.calendar_today), // Agregado const
-          InkWell(
-            onTap: _seleccionarFecha,
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                border: Border.all(color: colorScheme.onSurface.withOpacity(0.2)),
-                borderRadius: BorderRadius.circular(12),
-                color: theme.cardTheme.color,
-              ),
-              child: Row(
+    // SOLUCIÓN AL ERROR DE PROVIDER:
+    // Inyectamos el PrestamosProvider AQUÍ mismo para esta pantalla.
+    return ChangeNotifierProvider(
+      create: (_) => PrestamosProvider(),
+      child: Builder(
+        builder: (innerContext) {
+          // 'innerContext' es el que puede ver el PrestamosProvider creado arriba
+          return Scaffold(
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Icon(Icons.event, color: colorScheme.secondary),
-                  const SizedBox(width: 15),
-                  Text(
-                    DateFormat('EEEE d, MMMM yyyy', 'es').format(_fechaEntrega),
-                    style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                  
+                  // --- PASO 1: LIBRO ---
+                  _StepCard(
+                    index: 1,
+                    title: "Material Bibliográfico",
+                    child: _libroSeleccionado == null
+                        ? PrestamoSearchField(
+                            label: "Escanear Código o Título",
+                            icon: Icons.menu_book,
+                            controller: _libroCtrl,
+                            onSearch: _buscarLibro,
+                          )
+                        : SeleccionCard(
+                            titulo: _libroSeleccionado!.titulo,
+                            subtitulo: "Stock: ${_libroSeleccionado!.copiasDisponibles} | ${_libroSeleccionado!.codigoBarras}",
+                            icon: Icons.book,
+                            colorBase: Colors.amber,
+                            onDelete: () => setState(() => _libroSeleccionado = null),
+                          ),
                   ),
+
+                  const SizedBox(height: 20),
+
+                  // --- PASO 2: ALUMNO ---
+                  _StepCard(
+                    index: 2,
+                    title: "Estudiante Solicitante",
+                    child: _alumnoSeleccionado == null
+                        ? PrestamoSearchField(
+                            label: "Buscar por DNI o Nombre",
+                            icon: Icons.person_search,
+                            controller: _alumnoCtrl,
+                            onSearch: _buscarAlumno,
+                          )
+                        : SeleccionCard(
+                            titulo: _alumnoSeleccionado!.nombreCompleto,
+                            subtitulo: "${_alumnoSeleccionado!.grado} - ${_alumnoSeleccionado!.seccion}",
+                            icon: Icons.person,
+                            colorBase: Colors.blue,
+                            onDelete: () => setState(() => _alumnoSeleccionado = null),
+                          ),
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // --- PASO 3: FECHA Y BOTÓN ---
+                  Card(
+                    elevation: 2,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    color: theme.cardTheme.color,
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.calendar_today, color: colorScheme.primary),
+                              const SizedBox(width: 10),
+                              Text("Fecha de Devolución", style: TextStyle(fontWeight: FontWeight.bold, color: colorScheme.onSurface)),
+                            ],
+                          ),
+                          const SizedBox(height: 15),
+                          
+                          InkWell(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _fechaEntrega,
+                                firstDate: DateTime.now(),
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (picked != null) setState(() => _fechaEntrega = picked);
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: colorScheme.onSurface.withOpacity(0.2)),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text(
+                                    DateFormat('dd/MM/yyyy').format(_fechaEntrega),
+                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                                  ),
+                                  const Icon(Icons.arrow_drop_down),
+                                ],
+                              ),
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 30),
+
+                          // BOTÓN DE ACCIÓN
+                          // Usamos Consumer para escuchar isLoading del PrestamosProvider local
+                          Consumer<PrestamosProvider>(
+                            builder: (context, prestamosP, child) {
+                              return SizedBox(
+                                width: double.infinity,
+                                height: 55,
+                                child: ElevatedButton.icon(
+                                  onPressed: (_libroSeleccionado != null && _alumnoSeleccionado != null && !prestamosP.isLoading) 
+                                      ? () => _procesarPrestamo(innerContext) // Usamos innerContext
+                                      : null,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: colorScheme.primary,
+                                    foregroundColor: Colors.white,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                    elevation: 4,
+                                  ),
+                                  icon: prestamosP.isLoading 
+                                      ? Container(width: 24, height: 24, padding: const EdgeInsets.all(2), child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 3))
+                                      : const Icon(Icons.save_alt),
+                                  label: Text(
+                                    prestamosP.isLoading ? "PROCESANDO..." : "REGISTRAR PRÉSTAMO",
+                                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
+                                  ),
+                                ),
+                              );
+                            }
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 40),
                 ],
               ),
             ),
-          ),
-
-          const SizedBox(height: 40),
-
-          // BOTÓN
-          SizedBox(
-            width: double.infinity,
-            height: 55,
-            child: ElevatedButton.icon(
-              onPressed: (_libroSeleccionado != null && _alumnoSeleccionado != null) 
-                  ? _procesarPrestamo 
-                  : null,
-              icon: const Icon(Icons.save),
-              label: const Text("REGISTRAR PRÉSTAMO", style: TextStyle(fontWeight: FontWeight.bold)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: colorScheme.primary,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ),
-        ],
+          );
+        }
       ),
     );
   }
 }
 
-class _SectionHeader extends StatelessWidget {
+class _StepCard extends StatelessWidget {
+  final int index;
   final String title;
-  final IconData icon;
-  const _SectionHeader({required this.title, required this.icon});
+  final Widget child;
+
+  const _StepCard({required this.index, required this.title, required this.child});
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: theme.colorScheme.onSurface.withOpacity(0.6)),
-          const SizedBox(width: 8),
-          Text(title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold)),
-        ],
+    final colorScheme = Theme.of(context).colorScheme;
+    
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      color: Theme.of(context).cardTheme.color,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 24, height: 24,
+                  decoration: BoxDecoration(color: colorScheme.primary.withOpacity(0.2), shape: BoxShape.circle),
+                  child: Center(child: Text("$index", style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.bold))),
+                ),
+                const SizedBox(width: 10),
+                Text(title, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: colorScheme.onSurface)),
+              ],
+            ),
+            const SizedBox(height: 15),
+            child,
+          ],
+        ),
       ),
     );
   }
