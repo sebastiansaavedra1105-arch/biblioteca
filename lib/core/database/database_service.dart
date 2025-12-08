@@ -87,17 +87,19 @@ class DatabaseService {
     ''');
 
     // 4. Préstamos
-    await db.execute('''
+await db.execute('''
       CREATE TABLE prestamos(
         id TEXT PRIMARY KEY,
         libro_id TEXT,
         alumno_id TEXT, 
         libro_titulo TEXT,
-        nombre_alumno TEXT,
+        alumno_nombre TEXT,     
+        usuario_id TEXT,  
         fecha_prestamo TEXT,
         fecha_entrega TEXT,
         fecha_devolucion_real TEXT,
         activo INTEGER,
+        renovaciones INTEGER, 
         created_at TEXT,
         updated_at TEXT
       )
@@ -111,7 +113,7 @@ class DatabaseService {
         tabla TEXT,
         datos TEXT,
         registro_id TEXT,
-        fecha TEXT
+        fecha_creacion TEXT
       )
     ''');
 
@@ -227,7 +229,7 @@ class DatabaseService {
 
   Future<List<Map<String, dynamic>>> obtenerColaPendiente() async {
     final db = await database;
-    return await db.query('sync_cola', orderBy: 'fecha ASC');
+    return await db.query('sync_cola', orderBy: 'fecha_creacion ASC');
   }
 
   Future<int> borrarDeCola(int id) async {

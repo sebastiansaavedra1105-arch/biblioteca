@@ -3,7 +3,7 @@ import 'package:biblio/core/models/libro.dart';
 
 class InventarioBookItem extends StatelessWidget {
   final Libro libro;
-  final bool puedeEditar; // <--- VARIABLE CLAVE: Si es true, muestra botones
+  final bool puedeEditar;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -23,86 +23,105 @@ class InventarioBookItem extends StatelessWidget {
 
     return Card(
       elevation: 2,
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8), 
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       color: theme.cardTheme.color,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
+      child: ListTile(
+        visualDensity: VisualDensity.compact,
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        
+        // 1. FOTO
+        leading: ClipRRect(
+          borderRadius: BorderRadius.circular(6),
+          child: SizedBox(
+            width: 40,
+            height: 60,
+            child: _construirImagen(libro, colorScheme),
+          ),
+        ),
+        
+        // 2. TÍTULO
+        title: Text(
+          libro.titulo,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: textTheme.bodyLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            fontSize: 15,
+          ),
+        ),
+        
+        // 3. SUBTÍTULO
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // 1. FOTO
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: SizedBox(
-                width: 60,
-                height: 90,
-                child: _construirImagen(libro, colorScheme),
+            Text(
+              libro.autor,
+              style: textTheme.bodySmall?.copyWith(
+                color: colorScheme.onSurface.withOpacity(0.7),
+                fontSize: 13
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(width: 16),
-
-            // 2. DATOS DEL LIBRO
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    libro.titulo,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
+            const SizedBox(height: 6),
+            
+            // CHIPS COMPACTOS
+            Row(
+              mainAxisSize: MainAxisSize.min, // Importante: Que la fila ocupe lo mínimo
+              children: [
+                _InfoChip(
+                  icon: Icons.inventory_2, 
+                  label: "${libro.copiasDisponibles}",
+                  color: libro.copiasDisponibles > 0 ? Colors.blue : Colors.red,
+                ),
+                const SizedBox(width: 8),
+                
+                // --- CORRECCIÓN AQUÍ ---
+                // Antes: Expanded(...) -> Estiraba todo
+                // Ahora: Flexible(...) -> Solo ocupa lo necesario
+                Flexible( 
+                  fit: FlexFit.loose, 
+                  child: _InfoChip(
+                    icon: Icons.qr_code, 
+                    label: libro.codigoBarras,
+                    color: Colors.orange,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    libro.autor,
-                    style: textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurface.withOpacity(0.7)
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  
-                  // Chips de info
-                  Row(
-                    children: [
-                      _InfoChip(
-                        icon: Icons.inventory_2, 
-                        label: "${libro.copiasDisponibles}",
-                        color: libro.copiasDisponibles > 0 ? Colors.blue : Colors.red,
-                      ),
-                      const SizedBox(width: 10),
-                      _InfoChip(
-                        icon: Icons.qr_code, 
-                        label: libro.codigoBarras,
-                        color: Colors.orange,
-                      ),
-                    ],
-                  )
-                ],
-              ),
-            ),
-
-            // 3. ACCIONES (Solo si puedeEditar es true)
-            if (puedeEditar)
-              Column(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit, size: 22),
-                    color: colorScheme.primary,
-                    tooltip: "Editar Libro",
-                    onPressed: onEdit,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.delete, size: 22),
-                    color: colorScheme.error,
-                    tooltip: "Eliminar Libro",
-                    onPressed: onDelete,
-                  ),
-                ],
-              ),
+                ),
+              ],
+            )
           ],
         ),
+        
+        // 4. ACCIONES
+        trailing: puedeEditar
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined),
+                    color: colorScheme.primary,
+                    tooltip: "Editar",
+                    onPressed: onEdit,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    iconSize: 20,
+                  ),
+                  const SizedBox(width: 16),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    color: colorScheme.error,
+                    tooltip: "Eliminar",
+                    onPressed: onDelete,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    iconSize: 20,
+                  ),
+                ],
+              )
+            : null,
       ),
     );
   }
@@ -123,7 +142,9 @@ class InventarioBookItem extends StatelessWidget {
   Widget _placeholder(ColorScheme colors) {
     return Container(
       color: colors.onSurface.withOpacity(0.1),
-      child: Icon(Icons.book, color: colors.onSurface.withOpacity(0.3)),
+      child: Center(
+        child: Icon(Icons.book, size: 20, color: colors.onSurface.withOpacity(0.3))
+      ),
     );
   }
 }
@@ -145,12 +166,16 @@ class _InfoChip extends StatelessWidget {
         border: Border.all(color: color.withOpacity(0.3), width: 0.5)
       ),
       child: Row(
+        mainAxisSize: MainAxisSize.min, // Esto asegura que el chip se encoja al contenido
         children: [
           Icon(icon, size: 10, color: color),
           const SizedBox(width: 4),
-          Text(
-            label, 
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color)
+          Flexible( // Protege si el texto es muy largo, pero no estira si es corto
+            child: Text(
+              label, 
+              style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

@@ -1,20 +1,19 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-// CORRECCIÓN: Import absoluto para evitar errores de ruta
 import 'package:biblio/core/models/libro.dart';
 
 class FormLibroProvider extends ChangeNotifier {
-  // Llave global para validar el formulario desde los botones
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
-  // --- ESTADO DEL FORMULARIO ---
+  // --- ESTADO ---
   Uint8List? _fotoBytes;
+  String? _fotoUrl; // <--- NUEVO: Para guardar la URL si viene de la nube
+  
   String _estado = 'Bueno';
   String _categoria = 'General';
   bool _isLoading = false;
 
-  // Listas para los Dropdowns
   final List<String> categoriasList = [
     'General', 'Ficción', 'No Ficción', 'Ciencia', 'Historia', 
     'Tecnología', 'Arte', 'Matemáticas', 'Literatura', 
@@ -26,6 +25,7 @@ class FormLibroProvider extends ChangeNotifier {
 
   // --- GETTERS ---
   Uint8List? get fotoBytes => _fotoBytes;
+  String? get fotoUrl => _fotoUrl; // <--- NUEVO GETTER
   String get estado => _estado;
   String get categoria => _categoria;
   bool get isLoading => _isLoading;
@@ -34,6 +34,7 @@ class FormLibroProvider extends ChangeNotifier {
   void initData(Libro? libro) {
     if (libro != null) {
       _fotoBytes = libro.fotoBytes;
+      _fotoUrl = libro.fotoUrl; // <--- IMPORTANTE: Cargamos la URL también
       
       if (estadosList.contains(libro.estado)) {
         _estado = libro.estado;
@@ -49,10 +50,13 @@ class FormLibroProvider extends ChangeNotifier {
     } else {
       _limpiar();
     }
+    // No llamamos notifyListeners() aquí porque se llama dentro de initState 
+    // y podría dar error de "setState during build".
   }
 
   void _limpiar() {
     _fotoBytes = null;
+    _fotoUrl = null; // <--- Limpiamos URL
     _estado = 'Bueno';
     _categoria = 'General';
     _isLoading = false;
@@ -85,11 +89,12 @@ class FormLibroProvider extends ChangeNotifier {
       final XFile? image = await picker.pickImage(
         source: ImageSource.gallery,
         maxWidth: 600, 
-        imageQuality: 80,
+        imageQuality: 80, 
       );
 
       if (image != null) {
         _fotoBytes = await image.readAsBytes();
+        _fotoUrl = null; // Si selecciono nueva foto, borro la URL antigua
         notifyListeners();
       }
     } catch (e) {
@@ -99,6 +104,7 @@ class FormLibroProvider extends ChangeNotifier {
 
   void eliminarFoto() {
     _fotoBytes = null;
+    _fotoUrl = null; // Borramos todo
     notifyListeners();
   }
 }

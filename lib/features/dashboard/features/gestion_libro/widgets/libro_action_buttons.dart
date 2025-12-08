@@ -74,9 +74,9 @@ class LibroActionButtons extends StatelessWidget {
             if (!esEdicion)
               Expanded(
                 child: OutlinedButton.icon(
-                  onPressed: () => _importarCSV(context),
+                  onPressed: () => _importarConConfirmacion(context),
                   icon: const Icon(Icons.upload_file),
-                  label: const Text("Importar CSV"),
+                  label: const Text("Importar Excel/CSV"),
                   style: OutlinedButton.styleFrom(
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     side: BorderSide(color: colorScheme.primary),
@@ -105,6 +105,7 @@ class LibroActionButtons extends StatelessWidget {
     );
   }
 
+  // --- LÓGICA DE GUARDAR MANUAL ---
   Future<void> _guardar(BuildContext context) async {
     final formP = context.read<FormLibroProvider>();
     final librosP = context.read<LibrosProvider>();
@@ -132,6 +133,7 @@ class LibroActionButtons extends StatelessWidget {
       estado: formP.estado,
       observacion: obsCtrl.text.trim(),
       fotoBytes: formP.fotoBytes,
+      fotoUrl: formP.fotoUrl,
     );
 
     bool exito;
@@ -155,29 +157,123 @@ class LibroActionButtons extends StatelessWidget {
     }
   }
 
-  // --- CORRECCIÓN AQUÍ: Usamos el nombre y tipo de retorno correcto ---
-  Future<void> _importarCSV(BuildContext context) async {
+  // --- LÓGICA DE IMPORTACIÓN CON CONFIRMACIÓN ---
+  Future<void> _importarConConfirmacion(BuildContext context) async {
     final provider = context.read<LibrosProvider>();
+    final colorScheme = Theme.of(context).colorScheme;
     
-    // Llamada al método real de tu Provider
-    final mensaje = await provider.importarLibrosDesdeCSV();
+    // 1. LEER ARCHIVO SIN GUARDAR (Previsualización)
+    final List<Map<String, dynamic>>? datosLeidos = await provider.previsualizarImportacion();
     
-    if (context.mounted) {
-      if (mensaje == "Cancelado") return;
-
-      final esExito = mensaje.startsWith("Éxito");
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(mensaje), 
-          backgroundColor: esExito ? Colors.green : Colors.red
-        )
-      );
-
-      if (esExito) {
-        Navigator.pop(context); // Cerrar pantalla si salió bien
+    // Si canceló la selección de archivo o hubo error
+    if (datosLeidos == null) return; 
+    
+    if (datosLeidos.isEmpty) {
+      if (context.mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("El archivo está vacío o no se reconocieron datos."), backgroundColor: Colors.orange)
+        );
       }
+      return;
     }
+
+    if (!context.mounted) return;
+
+    // 2. MOSTRAR DIÁLOGO DE CONFIRMACIÓN
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Obliga a tocar un botón
+      builder: (ctx) => AlertDialog(
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        title: Row(
+          children: [
+            Icon(Icons.file_upload, color: colorScheme.primary),
+            const SizedBox(width: 10),
+            const Text("Confirmar Importación"),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                "Se han detectado ${datosLeidos.length} libros válidos.",
+                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 15),
+              const Text("Ejemplo de registros:", style: TextStyle(fontSize: 12, color: Colors.grey)),
+              const SizedBox(height: 5),
+              
+              // Mostramos máximo 3 libros como ejemplo
+              ...datosLeidos.take(3).map((l) => Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: colorScheme.primary.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8)
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.book, size: 14),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "${l['titulo']} - ${l['autor']}", 
+                        style: const TextStyle(fontSize: 12),
+                        maxLines: 1, 
+                        overflow: TextOverflow.ellipsis
+                      ),
+                    ),
+                    Text("Cant: ${l['copias']}", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              )),
+              
+              if (datosLeidos.length > 3)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8.0),
+                  child: Text("... y ${datosLeidos.length - 3} más.", style: const TextStyle(fontStyle: FontStyle.italic, fontSize: 12)),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx), // Cerrar diálogo
+            child: const Text("Cancelar"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: colorScheme.primary, 
+              foregroundColor: Colors.white
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx); // Cerrar diálogo
+              
+              // 3. GUARDAR REALMENTE EN LA BASE DE DATOS
+              final msg = await provider.guardarImportacionMasiva(datosLeidos);
+              
+              if (context.mounted) {
+                final esExito = msg.startsWith("Éxito");
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(msg), 
+                    backgroundColor: esExito ? Colors.green : Colors.red,
+                    duration: const Duration(seconds: 3),
+                  )
+                );
+                
+                // Si fue exitoso, cerramos la pantalla de "Agregar Libro" para volver al inventario
+                if (esExito) Navigator.pop(context); 
+              }
+            },
+            child: const Text("Confirmar e Importar"),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _imprimirEtiquetas(BuildContext context) async {

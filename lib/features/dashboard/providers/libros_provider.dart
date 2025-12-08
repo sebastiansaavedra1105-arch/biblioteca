@@ -2,7 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:csv/csv.dart';                 
+import 'package:csv/csv.dart';
+import 'package:excel/excel.dart';                 
 
 import '../../../core/database/database_service.dart';
 import '../../../core/services/sync_service.dart';
@@ -15,6 +16,8 @@ class LibrosProvider extends ChangeNotifier {
   // --- ESTADO ---
   List<Libro> _libros = [];
   List<Map<String, dynamic>> _prestamosActivos = [];
+  List<Map<String, dynamic>> _actividadReciente = []; 
+  List<Map<String, dynamic>> get actividadReciente => _actividadReciente;
   Map<String, int> _estadisticas = {
     'totalLibros': 0,
     'prestamosActivos': 0,
@@ -41,14 +44,15 @@ class LibrosProvider extends ChangeNotifier {
 
   // --- LÓGICA DE CARGA (Lectura siempre desde Local) ---
   
+  // --- CARGA DE DATOS ---
   Future<void> cargarTodo() async {
     _isLoading = true;
-    // notifyListeners(); // Opcional: Evita redibujados innecesarios si ya está cargando
     try {
       await Future.wait([
         cargarLibros(),
         cargarEstadisticas(),
         cargarPrestamos(),
+        cargarActividadReciente(), // <--- ESTA ES LA LÍNEA NUEVA IMPORTANTE
       ]);
     } catch (e) {
       _error = "Error al cargar datos: $e";
@@ -56,6 +60,21 @@ class LibrosProvider extends ChangeNotifier {
     } finally {
       _isLoading = false;
       notifyListeners();
+    }
+  }
+
+  // PEGA ESTA FUNCIÓN NUEVA JUSTO DEBAJO DE cargarTodo O DE cargarPrestamos
+  Future<void> cargarActividadReciente() async {
+    try {
+      final db = await _dbService.database;
+      // Trae los últimos 10 movimientos para el Dashboard
+      _actividadReciente = await db.query(
+        'prestamos', 
+        orderBy: 'fecha_prestamo DESC', 
+        limit: 10
+      );
+    } catch (e) {
+      debugPrint("Error cargando actividad: $e");
     }
   }
 
@@ -148,117 +167,167 @@ class LibrosProvider extends ChangeNotifier {
     return null;
   }
 
-// --- IMPORTACIÓN MASIVA BLINDADA ---
-  Future<String> importarLibrosDesdeCSV() async {
+// 1. PREVISUALIZAR: Lee el archivo y devuelve los datos SIN guardar
+  Future<List<Map<String, dynamic>>?> previsualizarImportacion() async {
     try {
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['csv', 'txt'],
+        allowedExtensions: ['xlsx', 'xls', 'csv', 'txt'],
       );
 
-      if (result == null) return "Cancelado";
+      if (result == null) return null; // Cancelado
 
       _isLoading = true;
       notifyListeners();
 
-      final file = File(result.files.single.path!);
+      File file = File(result.files.single.path!);
+      String extension = result.files.single.extension ?? '';
       
-      // Intentamos leer. Si falla UTF8, usamos Latin1 (común en Excel español)
-      String csvString;
-      try {
-        csvString = await file.readAsString(encoding: utf8);
-      } catch (e) {
-        csvString = await file.readAsString(encoding: latin1);
+      List<Map<String, dynamic>> librosLeidos = [];
+
+      // Procesar según extensión
+      if (extension == 'xlsx' || extension == 'xls') {
+        librosLeidos = await _leerExcelSinGuardar(file);
+      } else {
+        librosLeidos = await _leerCSVSinGuardar(file);
       }
 
-      // Convertidor robusto: 'shouldParseNumbers: false' para que los códigos de barra no se vuelvan notación científica
-      List<List<dynamic>> rows = const CsvToListConverter(
-        fieldDelimiter: ',', 
-        eol: '\n', 
-        shouldParseNumbers: false 
-      ).convert(csvString);
-
-      if (rows.isEmpty) throw Exception("El archivo está vacío");
-
-      int importados = 0;
-
-      // Iteramos desde 1 para saltar cabecera
-      for (int i = 1; i < rows.length; i++) {
-        final row = rows[i];
-        
-        // Si la fila tiene menos de 2 columnas, es basura, saltar.
-        if (row.length < 2) continue;
-
-        // --- VALIDACIÓN Y LIMPIEZA DE DATOS ---
-        
-        // 1. CANTIDAD (Columna 0): Quitamos espacios y si falla es 1
-        String rawCant = row[0].toString().replaceAll(RegExp(r'[^0-9]'), ''); // Solo números
-        final cantidad = int.tryParse(rawCant) ?? 1;
-
-        // 2. TÍTULO (Columna 1)
-        final titulo = row[1].toString().trim().isEmpty ? "Sin Título" : row[1].toString().trim();
-
-        // 3. ESTADO (Columna 2)
-        final estado = row.length > 2 ? row[2].toString().trim() : 'Bueno';
-
-        // 4. AUTOR (Columna 3)
-        final autor = (row.length > 3 && row[3].toString().trim().isNotEmpty) 
-            ? row[3].toString().trim() 
-            : 'Anónimo';
-
-        // 5. CÓDIGO (Columna 4)
-        String codigo = (row.length > 4) ? row[4].toString().trim() : '';
-        if (codigo.isEmpty || codigo == 'null') {
-           codigo = "IMP-${DateTime.now().millisecondsSinceEpoch}-$i"; 
-        }
-
-        // 6. AÑO (Columna 5)
-        String rawAnio = (row.length > 5) ? row[5].toString().replaceAll(RegExp(r'[^0-9]'), '') : '';
-        final anio = int.tryParse(rawAnio) ?? DateTime.now().year;
-
-        // 7. EDITORIAL (Columna 6)
-        final editorial = (row.length > 6) ? row[6].toString().trim() : 'General';
-
-        // 8. CATEGORÍA (Columna 7)
-        final categoria = (row.length > 7) ? row[7].toString().trim() : 'General';
-
-        // CREAR OBJETO
-        final nuevoLibro = Libro(
-          id: null,
-          codigoBarras: codigo,
-          titulo: titulo,
-          autor: autor,
-          isbn: '',
-          anio: anio,
-          editorial: editorial,
-          categoria: categoria.isEmpty ? 'General' : categoria,
-          copias: cantidad,
-          copiasDisponibles: cantidad, // ¡IMPORTANTE! Al importar, Stock = Disponibles
-          estado: estado.isEmpty ? 'Bueno' : estado,
-          observacion: 'Importado CSV',
-          fotoBytes: null,
-          fotoUrl: null
-        );
-
-        final datos = nuevoLibro.toMap();
-        datos.remove('id');
-        
-        await _syncService.insertar('libros', datos);
-        importados++;
-      }
-
-      // PASO CRÍTICO: FORZAR RECARGA DE ESTADÍSTICAS
-      await cargarTodo(); 
-      
-      return "Éxito: $importados libros procesados.";
+      return librosLeidos;
 
     } catch (e) {
-      debugPrint("Error CSV: $e");
-      return "Error: Verifica que el formato sea CSV separado por comas.";
+      _error = "Error leyendo archivo: $e";
+      debugPrint(_error);
+      return []; // Lista vacía indica error de lectura
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  // 2. GUARDAR: Recibe la lista aprobada y la inserta en BD
+  Future<String> guardarImportacionMasiva(List<Map<String, dynamic>> libros) async {
+    _isLoading = true;
+    notifyListeners();
+    
+    try {
+      int count = 0;
+      for (var libro in libros) {
+        // Asignamos ID y Fechas justo antes de guardar
+        libro['id'] = null; // SyncService generará el UUID
+        libro['created_at'] = DateTime.now().toIso8601String();
+        libro['updated_at'] = DateTime.now().toIso8601String();
+        
+        await _syncService.insertar('libros', libro);
+        count++;
+      }
+      
+      await cargarTodo(); // Refrescar la lista de la pantalla
+      return "Éxito: Se importaron $count libros correctamente.";
+    } catch (e) {
+      return "Error guardando: $e";
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // --- HELPER: LEER EXCEL (Devuelve lista limpia) ---
+  Future<List<Map<String, dynamic>>> _leerExcelSinGuardar(File file) async {
+    var bytes = file.readAsBytesSync();
+    var excel = Excel.decodeBytes(bytes);
+    List<Map<String, dynamic>> lista = [];
+    int contadorTemp = 0;
+
+    for (var table in excel.tables.keys) {
+      var sheet = excel.tables[table];
+      if (sheet == null) continue;
+
+      // Saltamos la fila 0 (Cabecera)
+      for (int i = 1; i < sheet.maxRows; i++) {
+        var row = sheet.row(i);
+        // Validar fila útil
+        if (row.isEmpty || row.length < 2 || row[1]?.value == null) continue;
+
+        String getVal(int idx) => (idx < row.length && row[idx]?.value != null) ? row[idx]!.value.toString().trim() : '';
+        int getInt(int idx) {
+          String val = getVal(idx).replaceAll(RegExp(r'[^0-9]'), '');
+          return int.tryParse(val) ?? (idx == 0 ? 1 : 2000);
+        }
+
+        // Mapeo (CANTIDAD|DESCRIPCIÓN|ESTADO|AUTOR|CODIGO|AÑO|EDITORIAL|CATEGORÍA)
+        String codigo = getVal(4);
+        if (codigo.isEmpty || codigo.toLowerCase() == 'null') {
+          codigo = "IMP-${DateTime.now().millisecondsSinceEpoch}-$contadorTemp";
+        }
+
+        lista.add({
+          'codigo_barras': codigo,
+          'titulo': getVal(1),
+          'autor': getVal(3).isEmpty ? 'Anónimo' : getVal(3),
+          'isbn': '',
+          'anio': getInt(5),
+          'editorial': getVal(6).isEmpty ? 'General' : getVal(6),
+          'categoria': getVal(7).isEmpty ? 'General' : getVal(7),
+          'copias': getInt(0),
+          'copias_disponibles': getInt(0),
+          'estado': getVal(2).isEmpty ? 'Bueno' : getVal(2),
+          'observacion': 'Importado Masivo',
+          'foto_url': null,
+          'foto_bytes': null
+        });
+        contadorTemp++;
+      }
+    }
+    return lista;
+  }
+
+  // --- HELPER: LEER CSV (Devuelve lista limpia) ---
+  Future<List<Map<String, dynamic>>> _leerCSVSinGuardar(File file) async {
+    String csvString;
+    try {
+      csvString = await file.readAsString(encoding: utf8);
+    } catch (e) {
+      csvString = await file.readAsString(encoding: latin1);
+    }
+
+    List<List<dynamic>> rows = const CsvToListConverter(fieldDelimiter: ',', eol: '\n', shouldParseNumbers: false).convert(csvString);
+    List<Map<String, dynamic>> lista = [];
+
+    for (int i = 1; i < rows.length; i++) {
+      final row = rows[i];
+      if (row.length < 2) continue;
+
+      String getStr(int idx) => (idx < row.length) ? row[idx].toString().trim() : '';
+      int getNum(int idx) {
+        String val = getStr(idx).replaceAll(RegExp(r'[^0-9]'), '');
+        return int.tryParse(val) ?? 1;
+      }
+
+      String codigo = getStr(4);
+      if (codigo.isEmpty || codigo == 'null') {
+        codigo = "IMP-${DateTime.now().millisecondsSinceEpoch}-$i";
+      }
+
+      int anio = getNum(5);
+      if (anio == 1) anio = 2000;
+
+      lista.add({
+          'codigo_barras': codigo,
+          'titulo': getStr(1),
+          'autor': getStr(3).isEmpty ? 'Anónimo' : getStr(3),
+          'isbn': '',
+          'anio': anio,
+          'editorial': getStr(6).isEmpty ? 'General' : getStr(6),
+          'categoria': getStr(7).isEmpty ? 'General' : getStr(7),
+          'copias': getNum(0),
+          'copias_disponibles': getNum(0),
+          'estado': getStr(2).isEmpty ? 'Bueno' : getStr(2),
+          'observacion': 'Importado CSV',
+          'foto_url': null,
+          'foto_bytes': null
+      });
+    }
+    return lista;
   }
 
   // --- ACCIONES DE PRÉSTAMOS (Transacciones Manuales con SyncService) ---
@@ -315,53 +384,102 @@ class LibrosProvider extends ChangeNotifier {
     }
   }
 
-  // --- DEVOLUCIONES (CORREGIDO) ---
+// --- REGISTRAR DEVOLUCIÓN CON STRIKES ---
   Future<bool> registrarDevolucion({
     required String prestamoId, 
     required String libroId
   }) async {
-    _isLoading = true; // Importante: notificar carga
+    _isLoading = true;
     notifyListeners();
 
     try {
-      // 1. Usamos SyncService para marcar el préstamo como inactivo (devuelto)
+      final db = await _dbService.database;
+      
+      // 1. OBTENER DATOS DEL PRÉSTAMO
+      final prestamoData = await db.query('prestamos', where: 'id = ?', whereArgs: [prestamoId]);
+      
+      if (prestamoData.isNotEmpty) {
+        final prestamo = prestamoData.first;
+        final fechaEntregaStr = prestamo['fecha_entrega'] as String;
+        final alumnoId = prestamo['alumno_id'] as String; // Asegúrate que en tu BD sea alumno_id
+        
+        final fechaEntrega = DateTime.parse(fechaEntregaStr);
+        final fechaActual = DateTime.now();
+
+        // 2. VERIFICAR SI ES TARDE (Lógica de Strikes)
+        if (fechaActual.isAfter(fechaEntrega)) {
+          debugPrint("⚠️ ALERTA: Devolución tardía. Aplicando Strike...");
+          
+          // Buscar al alumno
+          final alumnoData = await db.query('alumnos', where: 'id = ?', whereArgs: [alumnoId]);
+          
+          if (alumnoData.isNotEmpty) {
+            final alumno = Alumno.fromMap(alumnoData.first);
+            int nuevosStrikes = alumno.strikes + 1;
+            String? fechaVeto;
+
+            // REGLA: 3 Strikes = Vetado 15 días
+            if (nuevosStrikes >= 3) {
+              fechaVeto = fechaActual.add(const Duration(days: 15)).toIso8601String();
+              // Opcional: ¿Resetear strikes a 0? Si no, comenta la siguiente línea:
+              nuevosStrikes = 0; 
+              debugPrint("🚫 ALUMNO VETADO HASTA: $fechaVeto");
+            }
+
+            // Actualizar Alumno en BD y Nube
+            await _syncService.actualizar('alumnos', {
+              'strikes': nuevosStrikes,
+              'vetado_hasta': fechaVeto, // null si no está vetado
+              'updated_at': DateTime.now().toIso8601String()
+            }, alumnoId);
+          }
+        }
+      }
+
+      // 3. CERRAR EL PRÉSTAMO
       await _syncService.actualizar(
         'prestamos', 
         {
           'activo': 0, 
-          'fecha_devolucion_real': DateTime.now().toIso8601String() // Usamos un campo de devolución real
+          'fecha_devolucion_real': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String()
         }, 
         prestamoId
       );
 
-      // 2. Buscamos el libro en memoria para saber su stock actual
-      // Usamos firstWhere con orElse manejado
-      Libro? libroActual;
+      // 4. DEVOLVER EL STOCK (Sumar +1 copia)
+      // Buscamos el libro en la lista actual para obtener su stock
       try {
-        libroActual = _libros.firstWhere((l) => l.id == libroId);
-      } catch (_) {
-        debugPrint("Libro no encontrado en memoria local.");
+        final libroEnMemoria = _libros.firstWhere((l) => l.id == libroId, 
+          orElse: () => Libro(id: 'temp', codigoBarras: '', titulo: '', autor: '', isbn: '', anio: 0, editorial: '', categoria: '', copias: 0, copiasDisponibles: 0, estado: '', observacion: '')
+        );
+
+        if (libroEnMemoria.id != 'temp') {
+          await _syncService.actualizar(
+            'libros', 
+            {
+              'copias_disponibles': libroEnMemoria.copiasDisponibles + 1,
+              'updated_at': DateTime.now().toIso8601String()
+            }, 
+            libroId
+          );
+        }
+      } catch (e) {
+        debugPrint("Error actualizando stock local: $e");
       }
 
-      if (libroActual != null) {
-        // 3. Aumentamos el stock (+1) usando SyncService
-        await _syncService.actualizar(
-          'libros', 
-          {'copias_disponibles': libroActual.copiasDisponibles + 1}, 
-          libroId
-        );
-      } 
-
-      // 4. Recargamos todo para que la pantalla se actualice sola
+      // 5. RECARGAR Todo(Para ver cambios en Dashboard y Listas)
       await cargarTodo();
       
-      return true; // <--- Retornamos TRUE para que la pantalla sepa que tuvo éxito
+      return true;
       
     } catch (e) {
       _error = "Error al registrar devolución: $e";
-      _isLoading = false; // Quitamos carga en caso de error
+      debugPrint(_error);
+      return false;
+    } finally {
+      _isLoading = false;
       notifyListeners();
-      return false; // <--- Retornamos FALSE si falló
     }
   }
   
