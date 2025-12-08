@@ -1,7 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:bcrypt/bcrypt.dart'; 
+import 'package:bcrypt/bcrypt.dart'; // NECESARIO PARA ENCRIPTAR
 import 'package:file_picker/file_picker.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../../core/database/database_service.dart';
 import '../../../core/services/sync_service.dart';
@@ -9,9 +10,11 @@ import '../../../core/services/sync_service.dart';
 class DirectorProvider extends ChangeNotifier {
   final DatabaseService _dbService = DatabaseService();
   final SyncService _syncService = SyncService();
+  final _uuid = const Uuid();
 
   List<Map<String, dynamic>> _usuarios = [];
   
+  // Stats
   List<Map<String, dynamic>> _historialPrestamos = [];
   int _prestamosSemana = 0;
   int _prestamosMes = 0;
@@ -34,35 +37,15 @@ class DirectorProvider extends ChangeNotifier {
     cargarReportes(); 
   }
 
-  Future<void> forzarSincronizacionManual() async {
-    _isLoading = true;
-    notifyListeners();
-
-    try {
-      // 1. Llamamos al servicio para bajar datos frescos
-      await _syncService.forzarDescargaNube();
-      
-      // 2. Recargamos los datos en memoria para ver los cambios reflejados
-      await cargarUsuarios();
-      await cargarReportes();
-      
-    } catch (e) {
-      _error = "Error al sincronizar: $e";
-    } finally {
-      _isLoading = false;
-      notifyListeners();
-    }
-  }
-
-  // --- GESTIÓN DE USUARIOS ---
+  // --- GESTIÓN DE USUARIOS (CRUD SEGURO) ---
 
   Future<void> cargarUsuarios() async {
     _isLoading = true;
     notifyListeners();
     try {
       final db = await _dbService.database;
-      final data = await db.query('usuarios', orderBy: 'username ASC');
-      _usuarios = List<Map<String, dynamic>>.from(data);
+      // Traemos todos los usuarios
+      _usuarios = await db.query('usuarios', orderBy: 'nombre ASC');
     } catch (e) {
       _error = "Error cargando usuarios: $e";
     } finally {
@@ -71,57 +54,100 @@ class DirectorProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> crearUsuario(String u, String p, String n, String r) async {
-    try {
-      _isLoading = true;
-      notifyListeners();
+  // CREAR USUARIO (Siempre pide contraseña)
+  Future<bool> crearUsuario({
+    required String username, 
+    required String password, 
+    required String nombre, 
+    required String rol
+  }) async {
+    _isLoading = true;
+    notifyListeners();
 
-      final hash = BCrypt.hashpw(p, BCrypt.gensalt());
-      await _syncService.insertar('usuarios', {
-        'username': u, 
-        'password': hash, 
-        'nombre': n, 
-        'rol': r, 
-        'created_at': DateTime.now().toIso8601String()
-      });
+    try {
+      // 1. Encriptar contraseña
+      final String hashPassword = BCrypt.hashpw(password, BCrypt.gensalt());
+
+      // 2. Preparar datos
+      final nuevoUsuario = {
+        'id': _uuid.v4(),
+        'username': username,
+        'password': hashPassword, // Guardamos el HASH, no el texto plano
+        'nombre': nombre,
+        'rol': rol,
+        'created_at': DateTime.now().toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      // 3. Insertar (Sincronizado)
+      await _syncService.insertar('usuarios', nuevoUsuario);
       
       await cargarUsuarios();
       return true;
     } catch (e) {
-      _error = "Error al crear: $e";
-      notifyListeners();
+      _error = "Error creando usuario: $e";
+      debugPrint(_error);
       return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
-  Future<bool> eliminarUsuario(String id) async {
-    try {
-      await _syncService.eliminar('usuarios', id);
-      await cargarUsuarios();
-      return true;
-    } catch (e) {
-      _error = "Error al eliminar: $e";
-      return false;
-    }
-  }
+  // EDITAR USUARIO (Contraseña opcional)
+  Future<bool> editarUsuario({
+    required String id,
+    required String username,
+    String? password, // Puede ser null o vacío si no se quiere cambiar
+    required String nombre,
+    required String rol
+  }) async {
+    _isLoading = true;
+    notifyListeners();
 
-  Future<bool> editarUsuario(String id, String n, String r, String? p) async {
     try {
-      _isLoading = true;
-      notifyListeners();
-      
-      Map<String, dynamic> d = {'nombre': n, 'rol': r};
-      if(p != null && p.isNotEmpty) {
-        d['password'] = BCrypt.hashpw(p, BCrypt.gensalt());
+      final Map<String, dynamic> datosActualizar = {
+        'username': username,
+        'nombre': nombre,
+        'rol': rol,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      // SOLO si escribió una nueva contraseña, la encriptamos y la agregamos al mapa
+      if (password != null && password.isNotEmpty) {
+        final String hashPassword = BCrypt.hashpw(password, BCrypt.gensalt());
+        datosActualizar['password'] = hashPassword;
       }
-      
-      await _syncService.actualizar('usuarios', d, id);
+
+      // Actualizar (Sincronizado)
+      await _syncService.actualizar('usuarios', datosActualizar, id);
+
       await cargarUsuarios();
       return true;
     } catch (e) {
-      _error = "Error al editar: $e";
-      notifyListeners();
+      _error = "Error editando usuario: $e";
+      debugPrint(_error);
       return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  // ELIMINAR USUARIO
+  Future<bool> eliminarUsuario(String id) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      await _syncService.borrar('usuarios', id);
+      await cargarUsuarios();
+      return true;
+    } catch (e) {
+      _error = "Error eliminando: $e";
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 

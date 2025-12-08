@@ -289,9 +289,13 @@ class SyncService {
           final datosNube = await _supabase.from(tabla).select();
           
           // Insertamos masivamente en transacción para velocidad
-          await db.transaction((txn) async {
+            await db.transaction((txn) async {
             for (var dato in datosNube) {
-              await txn.insert(tabla, dato, conflictAlgorithm: ConflictAlgorithm.replace);
+              // 1. Limpiamos el dato (True -> 1, False -> 0)
+              final datoLimpio = _sanitizarParaSQLite(dato);
+
+              // 2. Insertamos el dato limpio
+              await txn.insert(tabla, datoLimpio, conflictAlgorithm: ConflictAlgorithm.replace);
             }
           });
         }
@@ -361,5 +365,24 @@ class SyncService {
       debugPrint("❌ Error al intentar borrar: $e");
       rethrow; // Lanzamos el error para que la UI sepa que falló
     }
+  }
+
+// --- HELPER MAESTRO: Limpia datos para que SQLite no falle ---
+  Map<String, dynamic> _sanitizarParaSQLite(Map<String, dynamic> original) {
+    // Creamos una copia modificable
+    final mapaLimpio = Map<String, dynamic>.from(original);
+    
+    // 1. Eliminar columnas "fantasmas" que vienen de Supabase pero no existen en Local
+    // Esto es lo que soluciona tu error actual:
+    mapaLimpio.remove('nombre_alumno'); 
+    
+    // 2. Convertir Booleans (true/false) a Enteros (1/0)
+    original.forEach((key, value) {
+      if (value is bool) {
+        mapaLimpio[key] = value ? 1 : 0;
+      }
+    });
+    
+    return mapaLimpio;
   }
 } 

@@ -87,7 +87,7 @@ class DatabaseService {
     ''');
 
     // 4. Préstamos
-await db.execute('''
+    await db.execute('''
       CREATE TABLE prestamos(
         id TEXT PRIMARY KEY,
         libro_id TEXT,
@@ -117,20 +117,41 @@ await db.execute('''
       )
     ''');
 
-    // --- DATOS SEMILLA (IGUALES AL SCRIPT DE LA NUBE) ---
-    final hash123 = BCrypt.hashpw('123', BCrypt.gensalt());
+    // --- DATOS SEMILLA (SEGURIDAD MEJORADA) ---
+    // Esta es la contraseña maestra inicial. 
+    // Puedes cambiarla aquí antes de compilar para producción.
+    const passwordMaestra = 'C0ntr4S3gur4_2025!'; 
+    
+    final hashSeguro = BCrypt.hashpw(passwordMaestra, BCrypt.gensalt());
 
-    // 1. ADMIN (ID con ceros terminado en 1)
+    // 1. ADMIN (Bibliotecaria)
+    // Usuario: admin_biblio | Pass: C0ntr4S3gur4_2025!
     await db.rawInsert(
-      'INSERT INTO usuarios (id, username, password, nombre, rol, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      ['00000000-0000-0000-0000-000000000001', 'admin', hash123, 'Encargada Biblio', 'BIBLIOTECARIA', DateTime.now().toIso8601String()]
+      'INSERT INTO usuarios (id, username, password, nombre, rol, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        '00000000-0000-0000-0000-000000000001', 
+        'admin_biblio', 
+        hashSeguro, 
+        'Encargada Principal', 
+        'BIBLIOTECARIA', 
+        DateTime.now().toIso8601String(),
+        DateTime.now().toIso8601String()
+      ]
     );
 
-    // 2. DIRECTOR (ID con ceros terminado en 2)
-    // NOTA: Usamos el mismo hash '123' para que puedas entrar seguro.
+    // 2. DIRECTOR (Superusuario)
+    // Usuario: director_general | Pass: C0ntr4S3gur4_2025!
     await db.rawInsert(
-      'INSERT INTO usuarios (id, username, password, nombre, rol, created_at) VALUES (?, ?, ?, ?, ?, ?)',
-      ['00000000-0000-0000-0000-000000000002', 'director', hash123, 'Sr. Director', 'DIRECTOR', DateTime.now().toIso8601String()]
+      'INSERT INTO usuarios (id, username, password, nombre, rol, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [
+        '00000000-0000-0000-0000-000000000002', 
+        'director_general', 
+        hashSeguro, 
+        'Dirección General', 
+        'DIRECTOR', 
+        DateTime.now().toIso8601String(),
+        DateTime.now().toIso8601String()
+      ]
     );
   }
 
