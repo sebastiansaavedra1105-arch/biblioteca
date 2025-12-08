@@ -4,14 +4,16 @@ import 'package:provider/provider.dart';
 // Imports absolutos
 import 'package:biblio/features/auth/providers/auth_provider.dart';
 import 'package:biblio/features/director/providers/director_provider.dart';
+import 'package:biblio/core/theme/theme_provider.dart'; 
+import 'package:biblio/features/catalogo_publico/screens/catalogo_screen.dart'; 
 
-// Pantallas del módulo Director
-import 'package:biblio/features/dashboard/screens/resumen_stats_screen.dart';
+// PANTALLAS HIJAS
+import 'package:biblio/features/director/screens/director_resumen_screen.dart';
 import 'package:biblio/features/director/screens/reportes_director_screen.dart';
-import 'package:biblio/features/alumnos/screens/gestion_alumnos_screen.dart';
 import 'package:biblio/features/director/screens/gestion_usuarios_screen.dart';
-import 'package:biblio/features/dashboard/screens/inventario_screen.dart';
 import 'package:biblio/features/director/screens/mantenimiento_screen.dart';
+import 'package:biblio/features/director/screens/director_alumnos_screen.dart';
+import 'package:biblio/features/director/screens/director_inventario_screen.dart';
 
 class DirectorDashboardScreen extends StatefulWidget {
   const DirectorDashboardScreen({super.key});
@@ -22,118 +24,159 @@ class DirectorDashboardScreen extends StatefulWidget {
 
 class _DirectorDashboardScreenState extends State<DirectorDashboardScreen> {
   int _selectedIndex = 0;
-  bool _isSyncing = false; // Estado local para la animación del botón
+  bool _isSidebarOpen = true; 
 
-  final List<Widget> _vistas = [
-    const ResumenStatsScreen(),     // 0: Resumen General
-    const ReportesDirectorScreen(), // 1: Reportes CSV
-    const GestionAlumnosScreen(),   // 2: Alumnos
-    const GestionUsuariosScreen(),  // 3: Usuarios (Staff)
-    const InventarioScreen(),       // 4: Inventario (Solo lectura)
-    const MantenimientoScreen(),    // 5: Zona de Peligro
+  final List<String> _titulos = [
+    "PANEL DIRECTIVO",
+    "MÉTRICAS Y REPORTES",
+    "DIRECTORIO DE ALUMNOS",
+    "GESTIÓN DE PERSONAL",
+    "AUDITORÍA DE INVENTARIO",
+    "MANTENIMIENTO DEL SISTEMA"
   ];
+
+  late List<Widget> _vistas;
+
+  @override
+  void initState() {
+    super.initState();
+    _vistas = [
+      DirectorResumenScreen(onNavigate: (i) => setState(() => _selectedIndex = i)), // 0
+      const ReportesDirectorScreen(),     // 1
+      const DirectorAlumnosScreen(),      // 2
+      const GestionUsuariosScreen(),      // 3
+      const DirectorInventarioScreen(),   // 4
+      const MantenimientoScreen(),        // 5
+    ];
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<DirectorProvider>().cargarReportes(); 
+    });
+  }
+
+  void _cerrarSesion() {
+    context.read<AuthProvider>().logout();
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (context) => const CatalogoScreen()),
+      (Route<dynamic> route) => false,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final authProvider = context.read<AuthProvider>();
-    final dorado = Theme.of(context).colorScheme.primary;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    
+    final double sidebarWidth = _isSidebarOpen ? 260 : 70;
 
     return Scaffold(
       body: Row(
         children: [
-          // --- BARRA LATERAL (SIDEBAR) ---
-          Container(
-            width: 250,
-            color: const Color(0xFF1E1E1E),
+          // --- SIDEBAR ---
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            width: sidebarWidth,
+            decoration: BoxDecoration(
+              color: colorScheme.surface, 
+              border: Border(right: BorderSide(color: colorScheme.onSurface.withOpacity(0.1))),
+            ),
             child: Column(
               children: [
-                const SizedBox(height: 40),
-                // Logo / Título
-                const Icon(Icons.security, size: 50, color: Colors.white),
-                const SizedBox(height: 10),
-                const Text("PANEL DIRECTOR", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                const SizedBox(height: 40),
-
-                // Menú
-                _MenuButton(icon: Icons.dashboard, label: "Resumen", isActive: _selectedIndex == 0, onTap: () => setState(() => _selectedIndex = 0)),
-                _MenuButton(icon: Icons.bar_chart, label: "Reportes", isActive: _selectedIndex == 1, onTap: () => setState(() => _selectedIndex = 1)),
-                _MenuButton(icon: Icons.school, label: "Alumnos", isActive: _selectedIndex == 2, onTap: () => setState(() => _selectedIndex = 2)),
-                _MenuButton(icon: Icons.people, label: "Usuarios Staff", isActive: _selectedIndex == 3, onTap: () => setState(() => _selectedIndex = 3)),
-                _MenuButton(icon: Icons.inventory_2, label: "Ver Inventario", isActive: _selectedIndex == 4, onTap: () => setState(() => _selectedIndex = 4)),
-                
-                const Spacer(),
-                
-                // Zona de Peligro
-                _MenuButton(icon: Icons.warning_amber_rounded, label: "Mantenimiento", isActive: _selectedIndex == 5, onTap: () => setState(() => _selectedIndex = 5)),
-                
-                const SizedBox(height: 20),
-                
-                // Cerrar Sesión
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: ElevatedButton.icon(
-                    onPressed: () => authProvider.logout(), 
-                    icon: const Icon(Icons.logout, color: Colors.black),
-                    label: const Text("Cerrar Sesión"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: dorado,
-                      foregroundColor: Colors.black,
-                      minimumSize: const Size(double.infinity, 50)
-                    ),
+                // LOGO DEL COLEGIO EN EL SIDEBAR
+                Container(
+                  height: 70, 
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: colorScheme.onSurface.withOpacity(0.1)))),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const NeverScrollableScrollPhysics(),
+                    child: _isSidebarOpen 
+                      ? Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            // Logo pequeño
+                            const _LogoColegio(size: 35),
+                            const SizedBox(width: 12),
+                            Text("DIRECCIÓN", style: theme.textTheme.titleMedium?.copyWith(color: colorScheme.primary, letterSpacing: 1.5, fontWeight: FontWeight.bold)),
+                          ],
+                        )
+                      : const _LogoColegio(size: 35), // Solo logo si está cerrado
                   ),
                 ),
-                const SizedBox(height: 20),
+                
+                // Menú
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    children: [
+                      _SidebarItem(icon: Icons.dashboard, label: "Resumen", index: 0, selectedIndex: _selectedIndex, isOpen: _isSidebarOpen, onTap: (i) => setState(() => _selectedIndex = i)),
+                      _SidebarItem(icon: Icons.analytics, label: "Reportes", index: 1, selectedIndex: _selectedIndex, isOpen: _isSidebarOpen, onTap: (i) => setState(() => _selectedIndex = i)),
+                      _SidebarItem(icon: Icons.school, label: "Alumnos", index: 2, selectedIndex: _selectedIndex, isOpen: _isSidebarOpen, onTap: (i) => setState(() => _selectedIndex = i)),
+                      _SidebarItem(icon: Icons.manage_accounts, label: "Personal", index: 3, selectedIndex: _selectedIndex, isOpen: _isSidebarOpen, onTap: (i) => setState(() => _selectedIndex = i)),
+                      _SidebarItem(icon: Icons.inventory_2, label: "Inventario", index: 4, selectedIndex: _selectedIndex, isOpen: _isSidebarOpen, onTap: (i) => setState(() => _selectedIndex = i)),
+                      if (_isSidebarOpen) Padding(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10), child: Divider(color: colorScheme.onSurface.withOpacity(0.1))),
+                      _SidebarItem(icon: Icons.build, label: "Mantenimiento", index: 5, selectedIndex: _selectedIndex, isOpen: _isSidebarOpen, onTap: (i) => setState(() => _selectedIndex = i)),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-          
-          // --- CONTENIDO PRINCIPAL ---
+
+          // --- CONTENIDO ---
           Expanded(
             child: Column(
               children: [
-                // HEADER SUPERIOR
+                // HEADER PRINCIPAL
                 Container(
-                  height: 60,
-                  color: Colors.black,
+                  height: 70, 
                   padding: const EdgeInsets.symmetric(horizontal: 20),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface,
+                    border: Border(bottom: BorderSide(color: colorScheme.onSurface.withOpacity(0.1))),
+                  ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      // --- BOTÓN DE ACTUALIZAR NUBE ---
                       IconButton(
-                        tooltip: "Forzar actualización desde la nube",
-                        icon: _isSyncing 
-                          ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: dorado, strokeWidth: 2))
-                          : const Icon(Icons.cloud_download_outlined, color: Colors.white),
-                        onPressed: _isSyncing ? null : () async {
-                          final directorProvider = context.read<DirectorProvider>();
-                          final messenger = ScaffoldMessenger.of(context);
-                          setState(() => _isSyncing = true);
-                          await directorProvider.forzarSincronizacionManual();
-                          if (!mounted) return;
-                          setState(() => _isSyncing = false);
-                          messenger.showSnackBar(
-                            SnackBar(
-                              content: const Text("Datos actualizados desde la nube correctamente"),
-                              backgroundColor: Colors.green[800],
-                              )
-                          );
-                        },
+                        onPressed: () => setState(() => _isSidebarOpen = !_isSidebarOpen),
+                        icon: Icon(_isSidebarOpen ? Icons.menu_open : Icons.menu),
+                        color: colorScheme.onSurface,
+                      ),
+                      const SizedBox(width: 20),
+                      
+                      Text(
+                        _titulos[_selectedIndex],
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: colorScheme.onSurface,
+                          letterSpacing: 1.0,
+                        ),
+                      ),
+
+                      const Spacer(),
+
+                      IconButton(
+                        onPressed: () => themeProvider.toggleTheme(!themeProvider.isDarkMode),
+                        icon: Icon(themeProvider.isDarkMode ? Icons.light_mode : Icons.dark_mode),
+                        color: themeProvider.isDarkMode ? Colors.amber : colorScheme.onSurface.withOpacity(0.6),
                       ),
                       const SizedBox(width: 10),
-                      const Chip(
-                        label: Text("Modo Director", style: TextStyle(color: Colors.white)),
-                        backgroundColor: Color(0xFF333333),
-                        avatar: Icon(Icons.admin_panel_settings, color: Colors.greenAccent, size: 18),
+                      IconButton(
+                        onPressed: _cerrarSesion,
+                        icon: Icon(Icons.logout, color: colorScheme.error),
+                        tooltip: "Cerrar Sesión",
                       ),
                     ],
                   ),
                 ),
 
-                // VISTA SELECCIONADA
+                // CUERPO
                 Expanded(
                   child: Container(
-                    color: const Color(0xFF121212), // Fondo oscuro cuerpo
+                    color: theme.scaffoldBackgroundColor, 
                     child: _vistas[_selectedIndex],
                   ),
                 ),
@@ -146,31 +189,63 @@ class _DirectorDashboardScreenState extends State<DirectorDashboardScreen> {
   }
 }
 
-class _MenuButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _MenuButton({required this.icon, required this.label, required this.isActive, required this.onTap});
+// --- WIDGET LOGO COLEGIO ---
+class _LogoColegio extends StatelessWidget {
+  final double size;
+  const _LogoColegio({required this.size});
 
   @override
   Widget build(BuildContext context) {
-    final dorado = Theme.of(context).colorScheme.primary;
-    return Material(
-      color: isActive ? dorado.withOpacity(0.1) : Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-          decoration: BoxDecoration(
-            border: Border(left: BorderSide(color: isActive ? dorado : Colors.transparent, width: 4))
-          ),
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(2), // Borde interno
+      decoration: BoxDecoration(
+        color: Colors.white, // Fondo blanco para que el logo resalte si es PNG transparente
+        shape: BoxShape.circle,
+        border: Border.all(color: colorScheme.primary, width: 2), // Aro dorado
+      ),
+      child: ClipOval(
+        child: Image.asset(
+          'assets/images/logo_colegio.png', // Ruta del logo
+          height: size,
+          width: size,
+          fit: BoxFit.contain,
+          errorBuilder: (_,__,___) => Icon(Icons.security, size: size * 0.7, color: colorScheme.primary), // Fallback
+        ),
+      ),
+    );
+  }
+}
+
+class _SidebarItem extends StatelessWidget {
+  final IconData icon; final String label; final int index; final int selectedIndex; final bool isOpen; final Function(int) onTap;
+  const _SidebarItem({required this.icon, required this.label, required this.index, required this.selectedIndex, required this.isOpen, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isSelected = index == selectedIndex;
+    return InkWell(
+      onTap: () => onTap(index),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        clipBehavior: Clip.hardEdge,
+        margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        padding: EdgeInsets.symmetric(vertical: 12, horizontal: isOpen ? 16 : 0),
+        decoration: BoxDecoration(
+          color: isSelected ? colorScheme.primary.withOpacity(0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(10),
+          border: isSelected ? Border.all(color: colorScheme.primary.withOpacity(0.5)) : null,
+        ),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const NeverScrollableScrollPhysics(),
           child: Row(
+            mainAxisAlignment: isOpen ? MainAxisAlignment.start : MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, color: isActive ? dorado : Colors.grey, size: 22),
-              const SizedBox(width: 15),
-              Text(label, style: TextStyle(color: isActive ? Colors.white : Colors.grey, fontWeight: isActive ? FontWeight.bold : FontWeight.normal, fontSize: 15)),
+              SizedBox(width: 30, child: Icon(icon, color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.6), size: 22)),
+              if (isOpen) ...[const SizedBox(width: 15), Text(label, style: TextStyle(color: isSelected ? colorScheme.onSurface : colorScheme.onSurface.withOpacity(0.7), fontWeight: isSelected ? FontWeight.bold : FontWeight.normal, fontSize: 14))],
             ],
           ),
         ),

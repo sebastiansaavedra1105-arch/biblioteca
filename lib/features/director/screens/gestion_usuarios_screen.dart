@@ -8,93 +8,119 @@ class GestionUsuariosScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final dorado = Theme.of(context).colorScheme.primary;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: const Text("Gestión de Usuarios", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: dorado,
-                foregroundColor: Colors.black,
-              ),
-              icon: const Icon(Icons.person_add),
-              label: const Text("Nuevo Usuario"),
-              onPressed: () {
-                _mostrarDialogo(context, null); // null = Crear
-              },
-            ),
-          )
-        ],
-      ),
+      // backgroundColor lo maneja el tema global, pero podemos forzar un tono sutil si es necesario
       body: Consumer<DirectorProvider>(
         builder: (context, provider, _) {
-          if (provider.isLoading) return Center(child: CircularProgressIndicator(color: dorado));
-          
-          // 🔥 FILTRO: Ocultamos la cuenta maestra 'director' para que no salga en la lista
+          // Filtramos la lista
           final listaVisible = provider.usuarios.where((u) => u['username'] != 'director').toList();
+          final totalUsuarios = listaVisible.length;
 
-          if (listaVisible.isEmpty) {
-            return const Center(child: Text("No hay otros usuarios registrados.", style: TextStyle(color: Colors.grey)));
+          if (provider.isLoading) {
+            return Center(child: CircularProgressIndicator(color: colorScheme.primary));
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: listaVisible.length,
-            itemBuilder: (ctx, i) {
-              final u = listaVisible[i];
-              
-              // Protegemos la cuenta 'admin' por defecto para que no se borre accidentalmente (opcional)
-              final esAdminBase = u['username'] == 'admin';
-
-              return Card(
-                color: const Color(0xFF1E1E1E),
-                margin: const EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  leading: CircleAvatar(
-                    backgroundColor: u['rol'] == 'DIRECTOR' ? Colors.amber[700] : Colors.blueGrey,
-                    child: Icon(u['rol'] == 'DIRECTOR' ? Icons.security : Icons.person, color: Colors.white),
-                  ),
-                  title: Text(u['nombre'] ?? 'Sin Nombre', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                  subtitle: Text("${u['rol']} • @${u['username']}", style: TextStyle(color: Colors.grey[400])),
-                  
-                  // 🔥 AQUÍ ESTÁ LA SOLUCIÓN: BOTONES EDITAR Y ELIMINAR
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Botón EDITAR
-                      IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.blueAccent),
-                        tooltip: "Editar datos",
-                        onPressed: () => _mostrarDialogo(context, u), // Pasamos el usuario para editar
-                      ),
-                      
-                      // Botón ELIMINAR (Solo si no es admin base, o quita la condición si quieres borrar todo)
-                      if (!esAdminBase)
-                        IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                          tooltip: "Eliminar",
-                          onPressed: () => _confirmarBorrar(context, u['id'], u['username']),
-                        )
-                      else
-                        const Padding(
-                          padding: EdgeInsets.all(8.0),
-                          child: Icon(Icons.lock, color: Colors.grey, size: 20),
-                        ),
-                    ],
-                  ),
+          return Column(
+            children: [
+              // --- 1. HEADER MEJORADO ---
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: colorScheme.onSurface.withOpacity(0.05)))
                 ),
-              );
-            },
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    // Contador de usuarios (Izquierda)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Equipo de Trabajo",
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold, 
+                            color: colorScheme.onSurface
+                          )
+                        ),
+                        Text(
+                          "$totalUsuarios miembros activos",
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurface.withOpacity(0.6)
+                          )
+                        ),
+                      ],
+                    ),
+
+                    // Botón de Agregar (Derecha)
+                    FilledButton.icon(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: colorScheme.primary,
+                        foregroundColor: Colors.white, // Texto blanco para contraste
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        elevation: 2,
+                        shadowColor: colorScheme.primary.withOpacity(0.4),
+                      ),
+                      icon: const Icon(Icons.person_add_rounded, size: 20),
+                      label: const Text("Nuevo Usuario", style: TextStyle(fontWeight: FontWeight.bold)),
+                      onPressed: () => _mostrarDialogo(context, null),
+                    ),
+                  ],
+                ),
+              ),
+
+              // --- 2. LISTA DE USUARIOS (ESTILO TARJETAS) ---
+              Expanded(
+                child: listaVisible.isEmpty
+                    ? _buildEmptyState(colorScheme)
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(20),
+                        itemCount: listaVisible.length,
+                        itemBuilder: (context, index) {
+                          final usuario = listaVisible[index];
+                          return _UsuarioCard(
+                            usuario: usuario,
+                            onEdit: () => _mostrarDialogo(context, usuario),
+                            onDelete: () => _confirmarBorrar(context, usuario['id'], usuario['username']),
+                          );
+                        },
+                      ),
+              ),
+            ],
           );
         },
+      ),
+    );
+  }
+
+  // Estado vacío bonito
+  Widget _buildEmptyState(ColorScheme colorScheme) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.people_outline, size: 50, color: colorScheme.primary),
+          ),
+          const SizedBox(height: 15),
+          Text(
+            "No hay personal registrado",
+            style: TextStyle(fontSize: 16, color: colorScheme.onSurface.withOpacity(0.6)),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            "Agrega un nuevo usuario para comenzar.",
+            style: TextStyle(fontSize: 13, color: colorScheme.onSurface.withOpacity(0.4)),
+          ),
+        ],
       ),
     );
   }
@@ -103,15 +129,12 @@ class GestionUsuariosScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (_) => UsuarioDialog(
-        usuarioParaEditar: usuario, // Si pasamos datos, el diálogo se pone en modo EDICIÓN
+        usuarioParaEditar: usuario,
         onConfirm: (user, pass, nombre, rol) {
           final provider = context.read<DirectorProvider>();
-          
           if (usuario == null) {
-            // CREAR
             provider.crearUsuario(user, pass, nombre, rol);
           } else {
-            // EDITAR (Usamos el ID del usuario original)
             provider.editarUsuario(usuario['id'], nombre, rol, pass);
           }
         },
@@ -120,23 +143,156 @@ class GestionUsuariosScreen extends StatelessWidget {
   }
 
   void _confirmarBorrar(BuildContext context, String id, String nombre) {
+    final theme = Theme.of(context);
+    
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF252525),
-        title: const Text("¿Eliminar Usuario?", style: TextStyle(color: Colors.white)),
-        content: Text("Se eliminará a @$nombre permanentemente.", style: const TextStyle(color: Colors.grey)),
+        backgroundColor: theme.colorScheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: Text("¿Eliminar Usuario?", style: TextStyle(color: theme.colorScheme.onSurface, fontWeight: FontWeight.bold)),
+        content: Text("Se eliminará a @$nombre permanentemente del sistema.", style: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7))),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancelar")),
           TextButton(
+            onPressed: () => Navigator.pop(context), 
+            child: const Text("Cancelar")
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: theme.colorScheme.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+            ),
+            icon: const Icon(Icons.delete_forever, size: 18),
             onPressed: () {
               context.read<DirectorProvider>().eliminarUsuario(id);
               Navigator.pop(context);
             }, 
-            child: const Text("Eliminar", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))
+            label: const Text("Eliminar")
           ),
         ],
       )
+    );
+  }
+}
+
+// --- WIDGET INTERNO: TARJETA DE USUARIO ---
+class _UsuarioCard extends StatelessWidget {
+  final Map<String, dynamic> usuario;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _UsuarioCard({
+    required this.usuario,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    
+    final bool esDirectorRol = usuario['rol'] == 'DIRECTOR';
+    final Color rolColor = esDirectorRol ? colorScheme.primary : Colors.blue;
+
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: colorScheme.onSurface.withOpacity(0.05)),
+      ),
+      color: theme.cardTheme.color,
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          children: [
+            // 1. AVATAR
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: rolColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                esDirectorRol ? Icons.security : Icons.manage_accounts,
+                color: rolColor,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+
+            // 2. INFORMACIÓN
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          usuario['nombre'] ?? 'Sin Nombre',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // CHIP DE ROL
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: rolColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: rolColor.withOpacity(0.3), width: 0.5)
+                        ),
+                        child: Text(
+                          esDirectorRol ? "DIRECTOR" : "BIBLIOTECARIO",
+                          style: TextStyle(
+                            fontSize: 10, 
+                            fontWeight: FontWeight.bold, 
+                            color: rolColor
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.alternate_email, size: 14, color: colorScheme.onSurface.withOpacity(0.5)),
+                      const SizedBox(width: 2),
+                      Text(
+                        usuario['username'] ?? 'anonimo',
+                        style: TextStyle(color: colorScheme.onSurface.withOpacity(0.6), fontSize: 13),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // 3. ACCIONES
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.edit_outlined),
+                  color: colorScheme.primary,
+                  tooltip: "Editar datos",
+                  onPressed: onEdit,
+                ),
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  color: colorScheme.error,
+                  tooltip: "Eliminar usuario",
+                  onPressed: onDelete,
+                ),
+              ],
+            )
+          ],
+        ),
+      ),
     );
   }
 }

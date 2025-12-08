@@ -29,7 +29,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   Win32Window::Size size(1280, 720);
   
   // Establecemos el título de la ventana
-  if (!window.Create(L"Jimenez Biblioteca", origin, size)) {
+  if (!window.Create(L"Jiménez Biblioteca", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

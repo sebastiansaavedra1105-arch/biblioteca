@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class UsuarioDialog extends StatefulWidget {
-  final Map<String, dynamic>? usuarioParaEditar; // Si es null, es CREAR. Si tiene datos, es EDITAR.
+  final Map<String, dynamic>? usuarioParaEditar; 
   final Function(String user, String pass, String nombre, String rol) onConfirm;
 
   const UsuarioDialog({super.key, this.usuarioParaEditar, required this.onConfirm});
@@ -28,7 +28,7 @@ class _UsuarioDialogState extends State<UsuarioDialog> {
 
     _nombreCtrl = TextEditingController(text: u?['nombre'] ?? '');
     _userCtrl = TextEditingController(text: u?['username'] ?? '');
-    _passCtrl = TextEditingController(); // Contraseña siempre empieza vacía por seguridad
+    _passCtrl = TextEditingController(); 
     
     if (_esEdicion && u?['rol'] != null) {
       _rol = u!['rol'];
@@ -37,49 +37,76 @@ class _UsuarioDialogState extends State<UsuarioDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return AlertDialog(
-      backgroundColor: const Color(0xFF252525),
-      title: Text(_esEdicion ? "Editar Usuario" : "Nuevo Usuario", style: const TextStyle(color: Colors.white)),
-      content: SingleChildScrollView(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
+      // Fondo dinámico
+      backgroundColor: colorScheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      title: Row(
+        children: [
+          Icon(_esEdicion ? Icons.edit : Icons.person_add, color: colorScheme.primary),
+          const SizedBox(width: 10),
+          Text(
+            _esEdicion ? "Editar Usuario" : "Nuevo Usuario",
+            style: TextStyle(color: colorScheme.onSurface)
+          ),
+        ],
+      ),
+      content: SizedBox(
+        width: 400,
+        child: SingleChildScrollView(
           child: Form(
             key: _formKey,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _input("Nombre Completo", _nombreCtrl, Icons.badge),
+                // NOMBRE
+                _input("Nombre del Personal", _nombreCtrl, Icons.badge),
                 const SizedBox(height: 15),
-                // El username no se suele editar porque es ID único en lógica, lo bloqueamos si es edición
-                _input("Usuario (Login)", _userCtrl, Icons.person, enabled: !_esEdicion),
+                
+                // ROL (Dropdown)
+                DropdownButtonFormField<String>(
+                  value: _rol,
+                  dropdownColor: colorScheme.surface,
+                  decoration: const InputDecoration(
+                    labelText: "Rol / Permisos",
+                    prefixIcon: Icon(Icons.admin_panel_settings),
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'BIBLIOTECARIA', child: Text("Bibliotecario/a (Acceso Estándar)")),
+                    DropdownMenuItem(value: 'DIRECTOR', child: Text("Director (Acceso Total)")),
+                  ],
+                  onChanged: (val) => setState(() => _rol = val!),
+                ),
                 const SizedBox(height: 15),
+
+                // USERNAME
+                _input(
+                  "Nombre de Usuario", 
+                  _userCtrl, 
+                  Icons.account_circle, 
+                  enabled: !_esEdicion // No dejar cambiar username al editar
+                ),
+                const SizedBox(height: 15),
+
+                // PASSWORD
                 _input(
                   _esEdicion ? "Nueva Contraseña (Opcional)" : "Contraseña", 
                   _passCtrl, 
-                  Icons.lock, 
-                  obscure: true,
-                  isPass: true
+                  Icons.lock,
+                  isPass: true,
+                  obscure: true
                 ),
-                const SizedBox(height: 20),
-                
-                DropdownButtonFormField<String>(
-                  value: _rol,
-                  dropdownColor: Colors.grey[900],
-                  style: const TextStyle(color: Colors.white),
-                  decoration: InputDecoration(
-                    labelText: 'Rol',
-                    labelStyle: const TextStyle(color: Colors.grey),
-                    prefixIcon: const Icon(Icons.security, color: Colors.amber),
-                    filled: true,
-                    fillColor: Colors.black12,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                if (_esEdicion)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 5, left: 10),
+                    child: Text(
+                      "* Dejar vacío para mantener la actual", 
+                      style: TextStyle(fontSize: 11, color: colorScheme.onSurface.withOpacity(0.5))
+                    ),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'BIBLIOTECARIA', child: Text('Bibliotecaria/o')),
-                    DropdownMenuItem(value: 'DIRECTOR', child: Text('Director/a')),
-                  ],
-                  onChanged: (v) => setState(() => _rol = v!),
-                )
               ],
             ),
           ),
@@ -88,10 +115,13 @@ class _UsuarioDialogState extends State<UsuarioDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context), 
-          child: const Text("Cancelar", style: TextStyle(color: Colors.grey))
+          child: const Text("Cancelar")
         ),
         ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.amber),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: colorScheme.primary,
+            foregroundColor: Colors.white,
+          ),
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               widget.onConfirm(
@@ -103,7 +133,7 @@ class _UsuarioDialogState extends State<UsuarioDialog> {
               Navigator.pop(context);
             }
           },
-          child: Text(_esEdicion ? "Actualizar" : "Guardar", style: const TextStyle(color: Colors.black)),
+          child: Text(_esEdicion ? "Actualizar" : "Guardar"),
         )
       ],
     );
@@ -114,19 +144,15 @@ class _UsuarioDialogState extends State<UsuarioDialog> {
       controller: ctrl,
       obscureText: obscure,
       enabled: enabled,
-      style: TextStyle(color: enabled ? Colors.white : Colors.grey),
       validator: (v) {
-        if (!enabled) return null; // Si está deshabilitado no valida
-        if (_esEdicion && isPass) return null; // En edición, la contraseña es opcional
+        if (!enabled) return null; 
+        if (_esEdicion && isPass) return null; // En edición, pass es opcional
         return v!.isEmpty ? 'Requerido' : null;
       },
+      // Usamos el tema global, solo añadimos iconos específicos
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: const TextStyle(color: Colors.grey),
-        prefixIcon: Icon(icon, color: enabled ? Colors.amber : Colors.grey),
-        filled: true,
-        fillColor: Colors.black12,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+        prefixIcon: Icon(icon),
       ),
     );
   }
