@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 class Libro {
@@ -31,29 +32,41 @@ class Libro {
     this.fotoBytes,
   });
 
-  // Convertir de Map (BD) a Objeto (App)
   factory Libro.fromMap(Map<String, dynamic> map) {
+    Uint8List? foto;
+    final raw = map['foto_bytes'];
+    if (raw is Uint8List) {
+      foto = raw;
+    } else if (raw is String && raw.isNotEmpty) {
+      try {
+        foto = base64Decode(raw);
+      } catch (_) {
+        foto = null;
+      }
+    } else if (raw is List) {
+      foto = Uint8List.fromList(raw.cast<int>());
+    }
+
     return Libro(
-      id: map['id'],
-      codigoBarras: map['codigo_barras'],
-      titulo: map['titulo'],
-      autor: map['autor'],
-      isbn: map['isbn'],
-      anio: map['anio'],
-      editorial: map['editorial'],
-      categoria: map['categoria'],
-      copias: map['copias'],
-      copiasDisponibles: map['copias_disponibles'],
-      estado: map['estado'],
+      id: map['id'] is int ? map['id'] : int.tryParse('${map['id']}'),
+      codigoBarras: map['codigo_barras'] ?? '',
+      titulo: map['titulo'] ?? '',
+      autor: map['autor'] ?? '',
+      isbn: map['isbn'] ?? '',
+      anio: map['anio'] is int ? map['anio'] : int.tryParse('${map['anio']}') ?? 0,
+      editorial: map['editorial'] ?? '',
+      categoria: map['categoria'] ?? 'General',
+      copias: map['copias'] is int ? map['copias'] : int.tryParse('${map['copias']}') ?? 1,
+      copiasDisponibles: map['copias_disponibles'] is int ? map['copias_disponibles'] : int.tryParse('${map['copias_disponibles']}') ?? 1,
+      estado: map['estado'] ?? 'Bueno',
       observacion: map['observacion'] ?? '',
-      fotoBytes: map['foto_bytes'], // BLOB viene como Uint8List en sqflite
+      fotoBytes: foto,
     );
   }
 
-  // Convertir de Objeto (App) a Map (BD)
   Map<String, dynamic> toMap() {
     return {
-      'id': id,
+      if (id != null) 'id': id,
       'codigo_barras': codigoBarras,
       'titulo': titulo,
       'autor': autor,

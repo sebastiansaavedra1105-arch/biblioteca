@@ -56,7 +56,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
       const RegistrarDevolucionScreen(), // 2
       const AgregarLibroScreen(),        // 3
       const InventarioScreen(),          // 4
-      const Center(child: Text('Inventario (En construcción)', style: TextStyle(color: Colors.white))), // 4
     ];
 
     return Scaffold(

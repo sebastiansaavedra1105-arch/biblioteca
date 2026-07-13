@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Providers
 import 'features/dashboard/providers/libros_provider.dart';
@@ -9,7 +10,14 @@ import 'features/auth/providers/auth_provider.dart';
 import 'features/catalogo_publico/screens/catalogo_screen.dart';
 import 'features/dashboard/screens/dashboard_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: 'https://jcqlzsmpdpwaurclhriy.supabase.co',
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjcWx6c21wZHB3YXVyY2xocml5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM5NTMwMjIsImV4cCI6MjA5OTUyOTAyMn0.MQXM9Y4ShcPF8tDZqozZJmgm9V9SA4l7SaOkRg_JFwU',
+  );
+
   runApp(const MyApp());
 }
 
@@ -35,7 +43,7 @@ class MyApp extends StatelessWidget {
             surface: Color(0xFF121212),
             onPrimary: Colors.black,
           ),
-          cardTheme: CardTheme(
+          cardTheme: CardThemeData(
             color: const Color(0xFF1A1A1A),
             elevation: 8,
             shape: RoundedRectangleBorder(

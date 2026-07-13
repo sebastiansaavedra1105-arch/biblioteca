@@ -12,12 +12,9 @@ dependencies:
   flutter:
     sdk: flutter
 
-  sqflite: ^2.3.3+1
-  sqflite_common_ffi: ^2.3.3
+  supabase_flutter: ^2.8.4
   path_provider: ^2.1.5
   cupertino_icons: ^1.0.8
-  path: ^1.9.0
-  sqlite3_flutter_libs: ^0.5.40
   crypto: ^3.0.7
   barcode_widget: ^2.0.4
   image_picker: ^1.1.2
